@@ -10,7 +10,7 @@
 
 `sws` is a very simple web server, which nonetheless performs many standard operations, such as binding to the given port on the given address and listening for incoming HTTP/1.0 requests. It serves these requests relative to the supplied directory (the document root). 
 
-Although it only supports GET and HEAD requests, along with the If-Modified-Since Request-Header (all as specified in RFC1945), `sws` does include some interesting features. In particular, it suports cgi-bin execution as laid out in RFC3875, and it provides automatic directory indexing for any directories that do not already contain an `index.html` file.
+Although it only supports GET and HEAD requests, along with the If-Modified-Since Request-Header (all as specified in RFC1945), `sws` does include some interesting features. In particular, it suports cgi-bin execution as laid out in RFC3875, and it provides automatic directory indexing for any directories that do not already contain an `index.html` file. It will also automatically translate requests beginning with "~" to the user's personal `sws` directory (i.e. /home/<user>/sws/).
 
 Additionally, logging can be enabled as an option with the `-l` switch, and the log entries are formatted according to a modified version of Apache's "common" format.
 
