@@ -3,7 +3,7 @@ CFLAGS += -Wlogical-op -Wpedantic -Wshadow
 
 PROG = sws
 
-SRC = 
+SRC = main.c settings.c
 BIN = bin
 
 all: ${PROG}
