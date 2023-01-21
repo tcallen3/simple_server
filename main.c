@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -76,6 +77,18 @@ main(int argc, char *argv[])
 	}
 
 	settings.server_dir = argv[0];
+	if (chdir(settings.server_dir) == -1) {
+		perror("chdir");
+		exit(EXIT_FAILURE);
+	}
+
+	if (!settings.debug) {
+		/* we already changed to working dir */
+		if (daemon(1, 0) == -1) {
+			perror("daemonization");
+			exit(EXIT_FAILURE);
+		}
+	}
 
 	return EXIT_SUCCESS;
 }
