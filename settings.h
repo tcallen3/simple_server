@@ -6,6 +6,7 @@
 #define PORT "8080"
 
 typedef struct SeverSettings {
+	char *server_dir;
 	char *cgi_dir;
 	char *ip_address;
 	char *log_file;

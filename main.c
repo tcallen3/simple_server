@@ -31,10 +31,7 @@ main(int argc, char *argv[])
 
 	setprogname(argv[0]);
 
-	if (argc < 2) {
-		usage(stderr);
-		exit(EXIT_FAILURE);
-	}
+
 
 	set_defaults(&settings);
 
@@ -70,9 +67,15 @@ main(int argc, char *argv[])
 		}
 	}
 
-	/* !! BEGIN TEST !! */
+	argc -= optind;
+	argv += optind;
 
-	/* !! END TEST !! */
+	if (argc != 1) {
+		usage(stderr);
+		exit(EXIT_FAILURE);
+	}
+
+	settings.server_dir = argv[0];
 
 	return EXIT_SUCCESS;
 }
