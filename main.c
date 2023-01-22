@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include "network.h"
 #include "settings.h"
 
 void
@@ -29,12 +30,12 @@ main(int argc, char *argv[])
 	int ch;
 	const char *all_opts = "c:dhi:l:p:";
 	ServerSettings settings;
+	OpenConnections connections;
 
 	setprogname(argv[0]);
 
-
-
 	set_defaults(&settings);
+	init_connections(&connections);
 
 	while ((ch = getopt(argc, argv, all_opts)) != -1) {
 		switch (ch) {
@@ -82,6 +83,14 @@ main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
+	if (bind_sockets(&connections, &settings) == -1) {
+		exit(EXIT_FAILURE);
+	}
+
+	/* !! BEGIN TEST !! */
+
+	/* !! END TEST !! */
+
 	if (!settings.debug) {
 		/* we already changed to working dir */
 		if (daemon(1, 0) == -1) {
@@ -89,6 +98,8 @@ main(int argc, char *argv[])
 			exit(EXIT_FAILURE);
 		}
 	}
+
+	destroy_connections(&connections);
 
 	return EXIT_SUCCESS;
 }
