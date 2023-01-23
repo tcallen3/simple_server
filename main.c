@@ -87,10 +87,6 @@ main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	/* !! BEGIN TEST !! */
-
-	/* !! END TEST !! */
-
 	if (!settings.debug) {
 		/* we already changed to working dir */
 		if (daemon(1, 0) == -1) {

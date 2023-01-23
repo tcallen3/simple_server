@@ -5,8 +5,10 @@
 #include <netinet/in.h>
 
 #include <errno.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "network.h"
 
@@ -33,7 +35,13 @@ alloc_socket_list(OpenConnections *conn, int nsock)
 void
 destroy_connections(OpenConnections *conn)
 {
+	int i;
+
 	if (conn->sockets != NULL) {
+		for (i = 0; i < conn->nsock; i++) {
+			(void)close(conn->sockets[i]);
+		}
+
 		(void)free(conn->sockets);
 	}
 	conn->nsock = 0;
@@ -110,7 +118,7 @@ bind_sockets(OpenConnections *conn, const ServerSettings *ss)
 		}
 	}
 
-	fprintf(stderr, "%s could not establish connection", 
+	fprintf(stderr, "%s could not establish connection\n", 
 		getprogname());
 	return -1;
 }

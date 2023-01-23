@@ -10,11 +10,11 @@ typedef struct OpenConnections {
 	int nsock;
 } OpenConnections;
 
-int init_connections(OpenConnections *);
+void init_connections(OpenConnections *);
 void destroy_connections(OpenConnections *);
 
 int alloc_socket_list(OpenConnections *, int);
 
-int bind_sockets(const ServerSettings *);
+int bind_sockets(OpenConnections *, const ServerSettings *);
 
 #endif /* SERVER_NETWORK_H */
