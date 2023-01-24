@@ -19,8 +19,8 @@ init_connections(OpenConnections *conn)
 	conn->nsock = 0;
 }
 
-int
-alloc_socket_list(OpenConnections *conn, int nsock)
+static int
+alloc_socket_list(OpenConnections *conn, nfds_t nsock)
 {
 	conn->sockets = malloc(nsock * sizeof(*conn->sockets));
 	if (conn->sockets == NULL) {
@@ -35,15 +35,16 @@ alloc_socket_list(OpenConnections *conn, int nsock)
 void
 destroy_connections(OpenConnections *conn)
 {
-	int i;
+	nfds_t i;
 
 	if (conn->sockets != NULL) {
 		for (i = 0; i < conn->nsock; i++) {
-			(void)close(conn->sockets[i]);
+			(void)close(conn->sockets[i].fd);
 		}
 
 		(void)free(conn->sockets);
 	}
+	conn->sockets = NULL;
 	conn->nsock = 0;
 }
 
@@ -51,7 +52,8 @@ int
 bind_sockets(OpenConnections *conn, const ServerSettings *ss)
 {
 	struct addrinfo hints, *servinfo, *p;
-	int sock_count, sindex;
+	nfds_t sock_count;
+	int sindex;
 	int rv;
 	int on_val = 1;
 
@@ -79,41 +81,44 @@ bind_sockets(OpenConnections *conn, const ServerSettings *ss)
 	for (p = servinfo; p != NULL; p = p->ai_next) {
 		++sindex;
 
-		if ((conn->sockets[sindex] = socket(p->ai_family, 
+		if ((conn->sockets[sindex].fd = socket(p->ai_family, 
 			p->ai_socktype, p->ai_protocol)) == -1) {
 			perror("socket");
 			continue;
 		}
 
-		if (setsockopt(conn->sockets[sindex], SOL_SOCKET, 
+		if (setsockopt(conn->sockets[sindex].fd, SOL_SOCKET, 
 			SO_REUSEADDR, &on_val, sizeof on_val) == -1) {
 			perror("setsockopt");
-			(void)close(conn->sockets[sindex]);
-			conn->sockets[sindex] = -1;
+			(void)close(conn->sockets[sindex].fd);
+			conn->sockets[sindex].fd = -1;
 			continue;
 		}
 
-		if (bind(conn->sockets[sindex], p->ai_addr, 
+		if (bind(conn->sockets[sindex].fd, p->ai_addr, 
 			p->ai_addrlen) == -1) {
 			perror("bind");
-			(void)close(conn->sockets[sindex]);
-			conn->sockets[sindex] = -1;
+			(void)close(conn->sockets[sindex].fd);
+			conn->sockets[sindex].fd = -1;
 			continue;
 		}
 
-		if (listen(conn->sockets[sindex], BACKLOG) == -1) {
+		if (listen(conn->sockets[sindex].fd, BACKLOG) == -1) {
 			perror("listen");
-			(void)close(conn->sockets[sindex]);
-			conn->sockets[sindex] = -1;
+			(void)close(conn->sockets[sindex].fd);
+			conn->sockets[sindex].fd = -1;
 			continue;
 		}
+
+		/* we'll be watching for these to become readable */
+		conn->sockets->events = POLLIN;
 	}
 
 	freeaddrinfo(servinfo);
 
 	/* make sure at least one socket is valid */
 	for (sock_count = 0; sock_count < conn->nsock; sock_count++) {
-		if (conn->sockets[sock_count] != -1) {
+		if (conn->sockets[sock_count].fd != -1) {
 			return 0;
 		}
 	}
