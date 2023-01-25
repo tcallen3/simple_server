@@ -16,5 +16,7 @@ void init_connections(OpenConnections *);
 void destroy_connections(OpenConnections *);
 
 int bind_sockets(OpenConnections *, const ServerSettings *);
+int poll_connections(OpenConnections *);
+void accept_connection(int);
 
 #endif /* SERVER_NETWORK_H */

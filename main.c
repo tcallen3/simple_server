@@ -28,6 +28,7 @@ int
 main(int argc, char *argv[])
 {
 	int ch;
+	int rv = 0;
 	const char *all_opts = "c:dhi:l:p:";
 	ServerSettings settings;
 	OpenConnections connections;
@@ -95,7 +96,9 @@ main(int argc, char *argv[])
 		}
 	}
 
+	rv = poll_connections(&connections);
+
 	destroy_connections(&connections);
 
-	return EXIT_SUCCESS;
+	return rv;
 }

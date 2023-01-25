@@ -1,4 +1,5 @@
 #include <sys/socket.h>
+#include <sys/wait.h>
 
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -126,4 +127,42 @@ bind_sockets(OpenConnections *conn, const ServerSettings *ss)
 	fprintf(stderr, "%s could not establish connection\n", 
 		getprogname());
 	return -1;
+}
+
+int
+poll_connections(OpenConnections *conn)
+{
+	int rv = 0;
+	short errs = POLLERR | POLLHUP | POLLNVAL;
+	nfds_t sindex;
+
+	/* not sure if SIGCHLD will interrupt... */
+	while ((rv = poll(conn->sockets, conn->nsock, INFTIM)) > 0) {
+		for (sindex = 0; sindex < conn->nsock; sindex++) {
+			if (conn->sockets[sindex]->revents & errs) {
+				/* skip sockets that error */
+				/* TODO: refine this based on errno? */
+				continue;
+			}
+
+			if (conn->sockets[sindex]->revents & POLLIN) {
+				/* TODO: add debug codes? */
+				accept_connection(conn->sockets[sindex]->fd);
+			}
+		}
+
+		/* since we woke up in parent, reap children */
+		/* NOTE: will set this to sig handler if needed */
+		while (waitpid(WAITANY, NULL, WNOHANG) > 0) {
+			continue;
+		}
+	}
+
+	return rv;
+}
+
+void 
+accept_connection(int sockfd)
+{
+	/* TODO: Implement */
 }
