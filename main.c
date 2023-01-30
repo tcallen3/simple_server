@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include "logging.h"
 #include "network.h"
 #include "settings.h"
 
@@ -77,6 +78,8 @@ main(int argc, char *argv[])
 		usage(stderr);
 		exit(EXIT_FAILURE);
 	}
+
+	setup_logging(&settings);
 
 	settings.server_dir = argv[0];
 	if (chdir(settings.server_dir) == -1) {

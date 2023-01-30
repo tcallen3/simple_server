@@ -11,6 +11,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "logging.h"
 #include "network.h"
 
 void
@@ -75,6 +76,7 @@ bind_sockets(OpenConnections *conn, const ServerSettings *ss)
 	}
 
 	if (alloc_socket_list(conn, sock_count) == -1) {
+		fprintf(stderr, "could not allocate space for socket list");
 		return -1;
 	}
 
@@ -158,6 +160,7 @@ poll_connections(OpenConnections *conn)
 		}
 	}
 
+	log_debug("unexpected exit from socket polling loop");
 	return rv;
 }
 
