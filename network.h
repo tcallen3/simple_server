@@ -18,5 +18,6 @@ void destroy_connections(OpenConnections *);
 int bind_sockets(OpenConnections *, const ServerSettings *);
 int poll_connections(OpenConnections *);
 void accept_connection(int);
+void process_request(int, const struct sockaddr_storage*);
 
 #endif /* SERVER_NETWORK_H */

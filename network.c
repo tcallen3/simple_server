@@ -167,5 +167,51 @@ poll_connections(OpenConnections *conn)
 void 
 accept_connection(int sockfd)
 {
-	/* TODO: Implement */
+	int new_sock;
+	pid_t pid;
+	struct sockaddr_storage client_addr;
+
+	/* TODO: set this to cloexec/reuse? */
+	new_sock = accept(sockfd, &client_addr, sizeof client_addr);
+	if (new_sock == -1) {
+		log_debug("failed to accept request");
+		return;
+	} 
+
+	if ((pid = fork()) == -1) {
+		log_debug("fork error");
+		return;
+	} else if (pid == 0) {
+		/* child */
+		/* handle request and exit */
+		process_request(new_sock, &client_addr);
+		(void)close(new_sock);
+		exit(EXIT_SUCCESS);
+		/* NOTREACHED */
+	} else {
+		/* parent */
+		/* we'll wait on child in main loop */
+		(void)close(new_sock);
+		return;
+	}
+}
+
+void
+process_request(int sockfd, const struct sockaddr_storage* client_addr)
+{
+	char buf[BUFSIZ];
+	ssize_t bytes;
+	socklen_t size;
+
+	/* NOTE: not sure if this is right usage of client_addr... */
+	size = sizeof(*client_addr);
+	while ((bytes = recvfrom(sockfd, buf, BUFSIZ-2, 0, 
+		(struct sockaddr *)client_addr, &size)) > 0) {
+		buf[BUFSIZ-1] = '\0';
+		log_debug(buf);
+	} 
+
+	if (bytes == -1) {
+		log_debug("receiving data from socket failed");
+	}
 }
