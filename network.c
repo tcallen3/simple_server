@@ -229,7 +229,7 @@ void process_request(int sockfd, struct sockaddr *client_addr) {
   size = sizeof(*client_addr);
   while ((bytes = recvfrom(sockfd, buf, BUFSIZ - 2, 0, client_addr, &size)) >
          0) {
-    buf[BUFSIZ - 1] = '\0';
+    buf[bytes] = '\0';
     log_debug(buf);
   }
 
