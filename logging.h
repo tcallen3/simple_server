@@ -36,7 +36,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <stdio.h>
 
-void setup_logging(const ServerSettings*); 
-void log_debug(const char*);
+#include "settings.h"
+
+void setup_logging(const ServerSettings *);
+void log_debug(const char *);
 
 #endif /* SERVER_LOGGING_H */

@@ -1,5 +1,17 @@
-CFLAGS = -ansi -g3 -Wall -Werror -Wextra -Wformat=2 -Wjump-misses-init 
+CFLAGS = -g3 -Wall -Werror -Wextra -Wformat=2 -Wjump-misses-init 
 CFLAGS += -Wlogical-op -Wpedantic -Wshadow
+
+# Overlay is needed to get some things like setprogname to work on Linux and 
+# avoids any header namespace changes (alternative is to manually add "bsd/" 
+# in front of numerous files). Strictly this should be split into CFLAGS and 
+# LD_FLAGS portions as:
+#
+# CFLAGS += $(shell pkg-config --cflags libbsd-overlay) 
+# LD_FLAGS += $(shell pkg-config --libs libbsd-overlay)
+#
+# but we're already being lazy and this is a small project with a simple
+# structure.
+BSD_OVERLAY = $(shell pkg-config --cflags --libs libbsd-overlay)
 
 PROG = sws
 
@@ -13,7 +25,7 @@ depend:
 
 ${PROG}: ${SRC}
 	mkdir -p ${BIN}
-	${CC} ${CFLAGS} -o ${BIN}/${PROG} ${SRC}
+	${CC} ${BSD_OVERLAY} ${CFLAGS} ${LD_FLAGS} -o ${BIN}/${PROG} ${SRC}
 
 clean:
 	rm -rf ${BIN}/${PROG}
