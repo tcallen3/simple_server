@@ -11,11 +11,13 @@ CFLAGS += -Wlogical-op -Wpedantic -Wshadow
 #
 # but we're already being lazy and this is a small project with a simple
 # structure.
-BSD_OVERLAY = $(shell pkg-config --cflags --libs libbsd-overlay)
+
+CFLAGS += $(shell pkg-config --cflags libbsd-overlay) 
+LD_FLAGS = $(shell pkg-config --libs libbsd-overlay)
 
 PROG = sws
 
-SRC = main.c network.c settings.c 
+SRC = main.c network.c settings.c logging.c
 BIN = bin
 
 all: ${PROG}
@@ -25,7 +27,7 @@ depend:
 
 ${PROG}: ${SRC}
 	mkdir -p ${BIN}
-	${CC} ${BSD_OVERLAY} ${CFLAGS} ${LD_FLAGS} -o ${BIN}/${PROG} ${SRC}
+	${CC} ${CFLAGS} -o ${BIN}/${PROG} ${SRC} ${LD_FLAGS}
 
 clean:
 	rm -rf ${BIN}/${PROG}

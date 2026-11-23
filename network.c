@@ -192,10 +192,11 @@ int poll_connections(OpenConnections *conn) {
 void accept_connection(int sockfd) {
   int new_sock;
   pid_t pid;
-  struct sockaddr_storage client_addr;
+  struct sockaddr client_addr;
+  socklen_t client_sz = 0;
 
   /* TODO: set this to cloexec/reuse? */
-  new_sock = accept(sockfd, &client_addr, sizeof client_addr);
+  new_sock = accept(sockfd, &client_addr, &client_sz);
   if (new_sock == -1) {
     log_debug("failed to accept request");
     return;
@@ -219,15 +220,15 @@ void accept_connection(int sockfd) {
   }
 }
 
-void process_request(int sockfd, const struct sockaddr_storage *client_addr) {
+void process_request(int sockfd, struct sockaddr *client_addr) {
   char buf[BUFSIZ];
   ssize_t bytes;
   socklen_t size;
 
   /* NOTE: not sure if this is right usage of client_addr... */
   size = sizeof(*client_addr);
-  while ((bytes = recvfrom(sockfd, buf, BUFSIZ - 2, 0,
-                           (struct sockaddr *)client_addr, &size)) > 0) {
+  while ((bytes = recvfrom(sockfd, buf, BUFSIZ - 2, 0, client_addr, &size)) >
+         0) {
     buf[BUFSIZ - 1] = '\0';
     log_debug(buf);
   }
