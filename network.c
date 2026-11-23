@@ -166,15 +166,15 @@ int poll_connections(OpenConnections *conn) {
   /* not sure if SIGCHLD will interrupt... */
   while ((rv = poll(conn->sockets, conn->nsock, INFTIM)) > 0) {
     for (sindex = 0; sindex < conn->nsock; sindex++) {
-      if (conn->sockets[sindex]->revents & errs) {
+      if (conn->sockets[sindex].revents & errs) {
         /* skip sockets that error */
         /* TODO: refine this based on errno? */
         continue;
       }
 
-      if (conn->sockets[sindex]->revents & POLLIN) {
+      if (conn->sockets[sindex].revents & POLLIN) {
         /* TODO: add debug codes? */
-        accept_connection(conn->sockets[sindex]->fd);
+        accept_connection(conn->sockets[sindex].fd);
       }
     }
 
