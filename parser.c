@@ -33,8 +33,75 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "parser.h"
 
+#include <stdlib.h>
+#include <string.h>
+
+/* TODO: consider error handling logging? */
+
+bool parse_http_request(char *request, RequestDetails *rcontent) {
+  size_t slen = 0;
+  size_t nlen = 0;
+  const char *lws = " \t";
+  const char *keyGet = "GET";
+  const char *keyHead = "HEAD";
+  char *reqToken = NULL;
+  char *pathToken = NULL;
+
+  /* Format should be "<request_type> <resource> <protocol>\r\n" and we
+   * only care about the request type and the desired resource. */
+  reqToken = strtok(request, lws);
+  if (reqToken == NULL) {
+    /* not enough tokens */
+    return false;
+  }
+
+  if (strcmp(reqToken, keyGet) == 0) {
+    rcontent->type = REQUEST_GET;
+
+    pathToken = strtok(NULL, lws);
+    if (pathToken == NULL) {
+      return false;
+    }
+
+    slen = strlen(pathToken);
+    nlen = slen + 1;
+    rcontent->relPath = (char *)malloc(nlen);
+    if (rcontent->relPath == NULL) {
+      return false;
+    }
+    if (strlcpy(rcontent->relPath, pathToken, nlen) != slen) {
+      return false;
+    }
+
+    /* we have what we need, so count it as a success */
+    return true;
+  } else if (strcmp(reqToken, keyHead) == 0) {
+    rcontent->type = REQUEST_HEAD;
+
+    pathToken = strtok(NULL, lws);
+    if (pathToken == NULL) {
+      return false;
+    }
+
+    slen = strlen(pathToken);
+    nlen = slen + 1;
+    rcontent->relPath = (char *)malloc(nlen);
+    if (rcontent->relPath == NULL) {
+      return false;
+    }
+    if (strlcpy(rcontent->relPath, pathToken, nlen) != slen) {
+      return false;
+    }
+
+    /* we have what we need, so count it as a success */
+    return true;
+  }
+
+  /* no supported request types matched */
+  return false;
+}
+
 /*
-bool parse_http_request(const char *, RequestContent *);
 bool parse_http_cache_header(const char *, struct tm *);
 */
 

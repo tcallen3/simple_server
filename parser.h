@@ -37,13 +37,16 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdbool.h>
 
 /* the define is required to get strptime(3) on Linux */
+#ifndef _XOPEN_SOURCE
 #define _XOPEN_SOURCE
+#endif
 #include <time.h>
 
 #include "network.h"
 
+bool parse_http_request(char *, RequestDetails *);
+
 /*
-bool parse_http_request(const char *, RequestContent *);
 bool parse_http_cache_header(const char *, struct tm *);
 */
 bool parse_http_time(const char *, struct tm *);

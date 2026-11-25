@@ -82,6 +82,17 @@ void destroy_connections(OpenConnections *conn) {
   conn->nsock = 0;
 }
 
+void init_request_details(RequestDetails *rd) {
+  rd->type = REQUEST_UNKNOWN;
+  rd->relPath = NULL;
+}
+
+void destroy_request_details(RequestDetails *rd) {
+  /* RequestDetails owns its memory */
+  (void)free(rd->relPath);
+  rd->relPath = NULL;
+}
+
 int bind_sockets(OpenConnections *conn, const ServerSettings *ss) {
   struct addrinfo hints, *servinfo, *p;
   nfds_t sock_count;

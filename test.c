@@ -33,13 +33,15 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 
+#include "network.h"
 #include "parser.h"
 
 void test_parse_empty_time() {
   printf("%s...", __FUNCTION__);
 
-  const char *time = "\0";
+  const char *time = "";
   struct tm tstruct;
 
   /* parsing an empty time string should fail */
@@ -145,13 +147,173 @@ void test_parse_bad_format_time() {
   printf("PASSED\n");
 }
 
+void test_parse_empty_request() {
+  printf("%s...", __FUNCTION__);
+
+  char *request = "";
+  RequestDetails rd;
+  init_request_details(&rd);
+
+  bool bParsed = parse_http_request(request, &rd);
+  assert(!bParsed);
+
+  destroy_request_details(&rd);
+
+  printf("PASSED\n");
+}
+
+void test_parse_truncated_request() {
+  printf("%s...", __FUNCTION__);
+
+  char request[1024];
+  const char *reqType = "GET";
+  RequestDetails rd;
+
+  init_request_details(&rd);
+  snprintf(request, sizeof(request) - 1, "%s", reqType);
+
+  bool bParsed = parse_http_request(request, &rd);
+  assert(!bParsed);
+
+  destroy_request_details(&rd);
+
+  printf("PASSED\n");
+}
+
+void test_parse_get_request() {
+  printf("%s...", __FUNCTION__);
+
+  char request[1024];
+  const char *reqType = "GET";
+  const char *reqPath = "/some/path";
+  RequestDetails rd;
+
+  init_request_details(&rd);
+  snprintf(request, sizeof(request) - 1, "%s %s HTTP/1.0\r\n", reqType,
+           reqPath);
+
+  bool bParsed = parse_http_request(request, &rd);
+  assert(bParsed);
+  assert(rd.type == REQUEST_GET);
+  assert(strcmp(reqPath, rd.relPath) == 0);
+
+  destroy_request_details(&rd);
+
+  printf("PASSED\n");
+}
+
+void test_parse_head_request() {
+  printf("%s...", __FUNCTION__);
+
+  char request[1024];
+  const char *reqType = "HEAD";
+  const char *reqPath = "/some/path";
+  RequestDetails rd;
+
+  init_request_details(&rd);
+  snprintf(request, sizeof(request) - 1, "%s %s HTTP/1.0\r\n", reqType,
+           reqPath);
+
+  bool bParsed = parse_http_request(request, &rd);
+  assert(bParsed);
+  assert(rd.type == REQUEST_HEAD);
+  assert(strcmp(reqPath, rd.relPath) == 0);
+
+  destroy_request_details(&rd);
+
+  printf("PASSED\n");
+}
+
+void test_parse_unsupported_request() {
+  printf("%s...", __FUNCTION__);
+
+  char request[] = "POST /some/path HTTP/1.0\r\n";
+  RequestDetails rd;
+
+  init_request_details(&rd);
+
+  bool bParsed = parse_http_request(request, &rd);
+  assert(!bParsed);
+
+  destroy_request_details(&rd);
+
+  printf("PASSED\n");
+}
+
+/* Documenting that we don't use the protocol portion of the request */
+void test_parse_request_no_protocol() {
+  printf("%s...", __FUNCTION__);
+
+  char request[1024];
+  const char *reqType = "GET";
+  const char *reqPath = "/some/path";
+  RequestDetails rd;
+
+  init_request_details(&rd);
+  snprintf(request, sizeof(request) - 1, "%s %s", reqType, reqPath);
+
+  bool bParsed = parse_http_request(request, &rd);
+  assert(bParsed);
+  assert(rd.type == REQUEST_GET);
+  assert(strcmp(reqPath, rd.relPath) == 0);
+
+  destroy_request_details(&rd);
+
+  printf("PASSED\n");
+}
+
+/* The final version of the server should support several flavors of path, so
+ * we confirm here that parsing doesn't care which one we provide - note that
+ * the actual logic to handle the different flavors happens elsewhere. */
+void multipath_parse_helper(const char *testPath) {
+  char request[1024];
+  const char *reqType = "GET";
+
+  RequestDetails rd;
+  init_request_details(&rd);
+
+  snprintf(request, sizeof(request) - 1, "%s %s", reqType, testPath);
+  bool bParsed = parse_http_request(request, &rd);
+  assert(bParsed);
+  assert(rd.type == REQUEST_GET);
+  assert(strcmp(testPath, rd.relPath) == 0);
+
+  destroy_request_details(&rd);
+}
+
+void test_parse_all_request_path_types() {
+  printf("%s...", __FUNCTION__);
+
+  const char *rootPath = "/";
+  const char *vanillaPath = "/some/path";
+  const char *cgiPath = "/cgi-bin/some/path";
+  const char *homePath = "/~/some/path";
+
+  multipath_parse_helper(rootPath);
+  multipath_parse_helper(vanillaPath);
+  multipath_parse_helper(cgiPath);
+  multipath_parse_helper(homePath);
+
+  printf("PASSED\n");
+}
+
 int main() {
+  /* time parsing */
   test_parse_empty_time();
   test_parse_gibberish_time();
   test_parse_http_canon_time();
   test_parse_http_canon_alt_time();
   test_parse_asc_time();
   test_parse_bad_format_time();
+
+  /* primary request parsing */
+  test_parse_empty_request();
+  test_parse_truncated_request();
+  test_parse_get_request();
+  test_parse_head_request();
+  test_parse_unsupported_request();
+  test_parse_request_no_protocol();
+  test_parse_all_request_path_types();
 
   return 0;
 }

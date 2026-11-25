@@ -53,13 +53,17 @@ typedef struct OpenConnections {
   nfds_t nsock;
 } OpenConnections;
 
-typedef struct RequestContent {
+/* owns memory for strings */
+typedef struct RequestDetails {
   RequestType type;
-  char *contentPath;
-} RequestContent;
+  char *relPath;
+} RequestDetails;
 
 void init_connections(OpenConnections *);
 void destroy_connections(OpenConnections *);
+
+void init_request_details(RequestDetails *);
+void destroy_request_details(RequestDetails *);
 
 int bind_sockets(OpenConnections *, const ServerSettings *);
 int poll_connections(OpenConnections *);
