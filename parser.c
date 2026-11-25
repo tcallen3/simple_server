@@ -31,13 +31,19 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
 
+/* Note: this must precede the other headers so we pick up _XOPEN_SOURCE for
+ * strptime availability */
 #include "parser.h"
 
 #include <stdlib.h>
 #include <string.h>
 
-/* TODO: consider error handling logging? */
+/* TODO: consider error handling debug logging? */
 
+/* Parse requests of the form "<request_type> <resource> <protocol>\r\n".
+ * We only support GET and HEAD for this server, and we ignore the protocol
+ * portion of the header. Effectively, anything beyond HTTP/1.0 gets silently
+ * downgraded. */
 bool parse_http_request(char *request, RequestDetails *rcontent) {
   size_t slen = 0;
   size_t nlen = 0;
@@ -47,8 +53,6 @@ bool parse_http_request(char *request, RequestDetails *rcontent) {
   char *reqToken = NULL;
   char *pathToken = NULL;
 
-  /* Format should be "<request_type> <resource> <protocol>\r\n" and we
-   * only care about the request type and the desired resource. */
   reqToken = strtok(request, lws);
   if (reqToken == NULL) {
     /* not enough tokens */
@@ -63,6 +67,7 @@ bool parse_http_request(char *request, RequestDetails *rcontent) {
       return false;
     }
 
+    /* copy the resource path component so RequestDetails owns its memory */
     slen = strlen(pathToken);
     nlen = slen + 1;
     rcontent->relPath = (char *)malloc(nlen);
@@ -83,6 +88,7 @@ bool parse_http_request(char *request, RequestDetails *rcontent) {
       return false;
     }
 
+    /* copy the resource path component so RequestDetails owns its memory */
     slen = strlen(pathToken);
     nlen = slen + 1;
     rcontent->relPath = (char *)malloc(nlen);
@@ -105,6 +111,9 @@ bool parse_http_request(char *request, RequestDetails *rcontent) {
 bool parse_http_cache_header(const char *, struct tm *);
 */
 
+/* Parse any of the three supported time formats recorded in RFC 1945. We will
+ * follow the guidance there of only generating the primary canonical format,
+ * but we can understand any of the allowed formats. */
 bool parse_http_time(const char *tstr, struct tm *tm) {
   char *pret = NULL;
 

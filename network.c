@@ -52,6 +52,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define WAITANY -1
 #endif
 
+/* Helper function since we don't have constructors in C */
 void init_connections(OpenConnections *conn) {
   conn->sockets = NULL;
   conn->nsock = 0;
@@ -68,6 +69,8 @@ static int alloc_socket_list(OpenConnections *conn, nfds_t nsock) {
   return 0;
 }
 
+/* Helper since we don't have destructors in C. Makes sure resources are freed
+ * and descriptors are closed, leaving system in a sane state. */
 void destroy_connections(OpenConnections *conn) {
   nfds_t i;
 
@@ -82,17 +85,22 @@ void destroy_connections(OpenConnections *conn) {
   conn->nsock = 0;
 }
 
+/* Helper function since we don't have constructors in C */
 void init_request_details(RequestDetails *rd) {
   rd->type = REQUEST_UNKNOWN;
   rd->relPath = NULL;
 }
 
+/* Helper function since we don't have destructors in C */
 void destroy_request_details(RequestDetails *rd) {
   /* RequestDetails owns its memory */
   (void)free(rd->relPath);
   rd->relPath = NULL;
 }
 
+/* Bind all interfaces on the host to the port specified in settings, then
+ * configure the resulting sockets for polling. Much of this is derived from
+ * the man pages corresponding to getaddrinfo(3), bind(2), and poll(2). */
 int bind_sockets(OpenConnections *conn, const ServerSettings *ss) {
   struct addrinfo hints, *servinfo, *p;
   nfds_t sock_count;
@@ -152,6 +160,7 @@ int bind_sockets(OpenConnections *conn, const ServerSettings *ss) {
       continue;
     }
 
+    /* TODO: this should probably migrate to epoll for efficiency */
     /* we'll be watching for these to become readable */
     conn->sockets->events = POLLIN;
   }
@@ -169,6 +178,12 @@ int bind_sockets(OpenConnections *conn, const ServerSettings *ss) {
   return -1;
 }
 
+/* TODO: also need to update this for epoll */
+/* TODO: ensure debug mode only handles one connection at a time */
+/* Actually poll all our connections in a loop, then use a fork model for
+ * handling the resulting communication. Children handle the actual request
+ * details and exit on completion. After handing off all current connections,
+ * we also opportunistically reap any completed children. */
 int poll_connections(OpenConnections *conn) {
   int rv = 0;
   short errs = POLLERR | POLLHUP | POLLNVAL;
@@ -200,6 +215,10 @@ int poll_connections(OpenConnections *conn) {
   return rv;
 }
 
+/* Implementation of the fork model for request handling. There are other ways
+ * to do this, but given the amount of file I/O involved, anything attempting
+ * an async approach gets involved quickly. A thread pool might be the cleanest
+ * alternative that maintains some simplicity. */
 void accept_connection(int sockfd) {
   int new_sock;
   pid_t pid;
@@ -231,6 +250,15 @@ void accept_connection(int sockfd) {
   }
 }
 
+/* Code to organize request handling. The basic components are:
+ *      1. Split TCP input into request + optional headers
+ *      2. Parse request for type and resource
+ *      3. Parse supported headers (If-Modified-Since)
+ *      4. Post-process resource based on settings (e.g. CGI)
+ *      5. Handle finalized request
+ *      6. Construct response
+ *      7. Transmit response
+ */
 void process_request(int sockfd, struct sockaddr *client_addr) {
   char buf[BUFSIZ];
   ssize_t bytes;

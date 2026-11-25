@@ -40,6 +40,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "network.h"
 #include "settings.h"
 
+/* print the CLI usage for sws(1) */
 void usage(FILE *fp) {
   fprintf(fp, "%s [-dh] [-c dir] [-i addr] [-l file] [-p port] dir\n",
           getprogname());
@@ -108,6 +109,7 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
+  /* initialize some server state */
   setup_logging(&settings);
 
   settings.server_dir = argv[0];
@@ -116,10 +118,12 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
+  /* start up TCP connectivity */
   if (bind_sockets(&connections, &settings) == -1) {
     exit(EXIT_FAILURE);
   }
 
+  /* for all non-debug usage, this code should run backgrounded */
   if (!settings.debug) {
     /* we already changed to working dir */
     if (daemon(1, 0) == -1) {
@@ -128,6 +132,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  /* listen for incoming requests */
   rv = poll_connections(&connections);
 
   destroy_connections(&connections);

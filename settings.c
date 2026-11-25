@@ -33,14 +33,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "settings.h"
 
-void 
-set_defaults(ServerSettings *s)
-{
-	s->server_dir = NULL;
-	s->cgi_dir = NULL;
-	s->ip_address = NULL;
-	s->log_file = NULL;
-	s->port = PORT;
+/* Helper to set sane defaults for global server settings. */
+void set_defaults(ServerSettings *s) {
+  s->server_dir = NULL;
+  s->cgi_dir = NULL;
+  s->ip_address = NULL;
+  s->log_file = NULL;
+  s->port = PORT;
 
-	s->debug = 0;
+  s->debug = 0;
 }

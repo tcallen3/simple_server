@@ -39,6 +39,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 static int debug = 0;
 static FILE *logfile = NULL;
 
+/* Optionally configure logging to a file if requested. The log format is a
+ * variant of a common Apache log format. In debug mode we always log to stderr.
+ * The default is completely silent operation. */
 void setup_logging(const ServerSettings *settings) {
   debug = settings->debug;
 
@@ -56,6 +59,7 @@ void setup_logging(const ServerSettings *settings) {
   }
 }
 
+/* This is for logs generated during development only. */
 void log_debug(const char *msg) {
   if (!debug) {
     return;
@@ -64,6 +68,8 @@ void log_debug(const char *msg) {
   fprintf(logfile, "%s\n", msg);
 }
 
+/* Logging which translates some special whitespace for displaying e.g. curl
+ * request format. Helpful for confirming HTTP protocol request specs. */
 void log_escaped(const char *msg) {
   size_t len = strlen(msg);
   for (size_t i = 0; i < len; i++) {
