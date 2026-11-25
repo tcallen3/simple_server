@@ -31,6 +31,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
 
+#include <stdio.h>
+#include <string.h>
+
 #include "logging.h"
 
 static int debug = 0;
@@ -59,4 +62,19 @@ void log_debug(const char *msg) {
   }
 
   fprintf(logfile, "%s\n", msg);
+}
+
+void log_escaped(const char *msg) {
+  size_t len = strlen(msg);
+  for (size_t i = 0; i < len; i++) {
+    if (msg[i] == '\r') {
+      fprintf(stderr, "\\r");
+    } else if (msg[i] == '\n') {
+      fprintf(stderr, "\\n");
+    } else {
+      fprintf(stderr, "%c", msg[i]);
+    }
+  }
+
+  fprintf(stderr, "\n");
 }

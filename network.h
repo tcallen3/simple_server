@@ -42,10 +42,21 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define BACKLOG 10
 
+typedef enum RequestType {
+  REQUEST_GET,
+  REQUEST_HEAD,
+  REQUEST_UNKNOWN,
+} RequestType;
+
 typedef struct OpenConnections {
   struct pollfd *sockets;
   nfds_t nsock;
 } OpenConnections;
+
+typedef struct RequestContent {
+  RequestType type;
+  char *contentPath;
+} RequestContent;
 
 void init_connections(OpenConnections *);
 void destroy_connections(OpenConnections *);

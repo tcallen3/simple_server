@@ -34,11 +34,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef SERVER_LOGGING_H
 #define SERVER_LOGGING_H
 
-#include <stdio.h>
-
 #include "settings.h"
 
 void setup_logging(const ServerSettings *);
 void log_debug(const char *);
+void log_escaped(const char *);
 
 #endif /* SERVER_LOGGING_H */
