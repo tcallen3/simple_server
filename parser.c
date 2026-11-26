@@ -107,9 +107,37 @@ bool parse_http_request(char *request, RequestDetails *rcontent) {
   return false;
 }
 
-/*
-bool parse_http_cache_header(const char *, struct tm *);
-*/
+/* We only support the If-Modified-Since cache control header, which is why we
+ * explicitly accept a time structure here. */
+bool parse_http_cache_header(char *hstr, struct tm *tm) {
+  const char imsHeader[] = "If-Modified-Since";
+
+  const char *headerSep = ":";
+  const char *vspace = "\r\n";
+  char *headerName = NULL;
+  char *headerDate = NULL;
+
+  headerName = strtok(hstr, headerSep);
+  if (headerName == NULL) {
+    return false;
+  }
+
+  if (strcmp(headerName, imsHeader) == 0) {
+    headerDate = strtok(NULL, vspace);
+    while (headerDate != NULL && (*headerDate == ' ' || *headerDate == '\t')) {
+      headerDate++;
+    }
+    if (headerDate == NULL) {
+      return false;
+    }
+
+    if (parse_http_time(headerDate, tm)) {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 /* Parse any of the three supported time formats recorded in RFC 1945. We will
  * follow the guidance there of only generating the primary canonical format,

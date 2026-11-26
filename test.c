@@ -297,6 +297,63 @@ void test_parse_all_request_path_types() {
   printf("PASSED\n");
 }
 
+void test_parse_empty_header() {
+  printf("%s...", __FUNCTION__);
+
+  char request[] = "";
+  struct tm timeData;
+
+  bool bParsed = parse_http_cache_header(request, &timeData);
+  assert(!bParsed);
+
+  printf("PASSED\n");
+}
+
+void test_parse_incomplete_header() {
+  printf("%s...", __FUNCTION__);
+
+  char request[] = "If-Modified-Since:";
+  struct tm timeData;
+
+  bool bParsed = parse_http_cache_header(request, &timeData);
+  assert(!bParsed);
+
+  printf("PASSED\n");
+}
+
+void test_parse_unsupported_header() {
+  printf("%s...", __FUNCTION__);
+
+  char request[] = "Date: Sun, 06 Nov 1994 08:49:37 GMT\r\n";
+  struct tm timeData;
+
+  bool bParsed = parse_http_cache_header(request, &timeData);
+  assert(!bParsed);
+
+  printf("PASSED\n");
+}
+
+void test_parse_canon_time_header() {
+  printf("%s...", __FUNCTION__);
+
+  char request[] = "If-Modified-Since: Sun, 06 Nov 1994 08:49:37 GMT\r\n";
+  struct tm timeData;
+
+  bool bParsed = parse_http_cache_header(request, &timeData);
+  assert(bParsed);
+
+  /* see tm(3type) man page */
+  assert(timeData.tm_wday == 0);
+  assert(timeData.tm_mday == 6);
+  assert(timeData.tm_mon == 10);
+  assert(timeData.tm_year == 94);
+  assert(timeData.tm_hour == 8);
+  assert(timeData.tm_min == 49);
+  assert(timeData.tm_sec == 37);
+
+  printf("PASSED\n");
+}
+
 int main() {
   /* time parsing */
   test_parse_empty_time();
@@ -314,6 +371,12 @@ int main() {
   test_parse_unsupported_request();
   test_parse_request_no_protocol();
   test_parse_all_request_path_types();
+
+  /* cache header parsing */
+  test_parse_empty_header();
+  test_parse_incomplete_header();
+  test_parse_unsupported_header();
+  test_parse_canon_time_header();
 
   return 0;
 }
