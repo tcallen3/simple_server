@@ -112,6 +112,7 @@ int main(int argc, char *argv[]) {
   /* initialize some server state */
   setup_logging(&settings);
 
+  /* FIXME: should probably resolve this to a canonical path */
   settings.server_dir = argv[0];
   if (chdir(settings.server_dir) == -1) {
     perror("chdir");

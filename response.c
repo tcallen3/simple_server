@@ -97,11 +97,74 @@ bool construct_server_header(char *buf, size_t size) {
   return true;
 }
 
-/* TODO
+/* FIXME: need to get a handle to the socket so we can stream content out */
+/* TODO: support directly enumeration and index.html */
+/* TODO: support cgi-bin execution */
+/* TODO: support home directory lookup */
 char *construct_response(RequestDetails *rd) {
-  // If-Modified-Since returns 304 Not Modified if the file is unchanged
+  char buf[BUFSIZ];
+  char *response = NULL;
+  size_t responseSize = BUFSIZ;
+  bool success = false;
+
+  if (rd->type == REQUEST_UNKNOWN) {
+    response = construct_error_response(STATUS_NOT_IMPLEMENTED);
+    return response;
+  }
+
+  /* construct canonical absolute path via CWD prefix and realpath(3) */
+
+  /* TODO: sanity check that path is a proper subpath of CWD (or user dir) */
+
+  /* confirm requested content is an extant file we have access to */
+
+  /* TEMPORARY: until we add directory support, dir-only content is an error */
+
+  /* check for early exit: request is GET and If-Modified-Since applies */
+  /* If-Modified-Since returns 304 Not Modified if the file is unchanged */
+
+  /* when IMS doesn't apply, we get the last-modified timestamp on the file */
+
+  /* determine content type for the file via libmagic */
+
+  /* open and read file to determine content-length - data is streamed, not
+   * buffered, to avoid memory growth and subtle resizing concerns */
+
+  /* construct full status line and headers for response */
+
+  /* ... */
+
+  /* response date */
+  success = construct_date_header(buf, BUFSIZ);
+  if (!success) {
+    goto fail;
+  }
+  success = safe_append(response, buf, &responseSize);
+  if (!success) {
+    goto fail;
+  }
+
+  /* server info */
+  success = construct_server_header(buf, BUFSIZ);
+  if (!success) {
+    goto fail;
+  }
+  success = safe_append(response, buf, &responseSize);
+  if (!success) {
+    goto fail;
+  }
+
+  /* ... */
+
+  /* if request is GET, stream out file content */
+
+  return response;
+
+  /* FIXME: should stream out fallback error status */
+fail:
+  (void)free(response);
+  return NULL;
 }
-*/
 
 /* Generate the status line and meaningful supported headers for a response
  * which encountered an error. If an error occurs in generating the
@@ -159,6 +222,6 @@ char *construct_error_response(ResponseStatus status) {
   return response;
 
 fail:
-  free(response);
+  (void)free(response);
   return NULL;
 }

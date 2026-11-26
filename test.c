@@ -31,6 +31,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
 
+/* Note: this must precede the other headers so we pick up _XOPEN_SOURCE for
+ * strptime availability */
+#include "parser.h"
+
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -38,8 +42,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "network.h"
-#include "parser.h"
 #include "response.h"
+#include "version.h"
 
 void test_parse_empty_time() {
   printf("%s...", __FUNCTION__);
@@ -494,6 +498,78 @@ void test_safe_append_excess() {
   printf("PASSED\n");
 }
 
+void test_error_response_generation() {
+  printf("%s...", __FUNCTION__);
+
+  const char msgSep[] = "\r\n";
+  const size_t codeCount = 15;
+  ResponseStatus codes[] = {
+      STATUS_OK,
+      STATUS_CREATED,
+      STATUS_ACCEPTED,
+      STATUS_NO_CONTENT,
+      STATUS_MOVED_PERMANENTLY,
+      STATUS_MOVED_TEMPORARILY,
+      STATUS_NOT_MODIFIED,
+      STATUS_BAD_REQUEST,
+      STATUS_UNAUTHORIZED,
+      STATUS_FORBIDDEN,
+      STATUS_NOT_FOUND,
+      STATUS_SERVER_ERROR,
+      STATUS_NOT_IMPLEMENTED,
+      STATUS_BAD_GATEWAY,
+      STATUS_SERVICE_UNAVAILABLE,
+  };
+  const char datePrefix[] = "Date: ";
+  const char canonFormat[] = "%a, %d %b %Y %T GMT";
+
+  char expectedBuf[BUFSIZ];
+  char *response = NULL;
+  char *msgComponent = NULL;
+  char *tmp = NULL;
+  struct tm dummyTime;
+
+  /* Note: we enforce specific header ordering here,
+   * even though HTTP doesn't */
+  for (size_t i = 0; i < codeCount; i++) {
+    response = construct_error_response(codes[i]);
+    assert(response != NULL);
+
+    /* status line is what we expect */
+    msgComponent = strtok(response, msgSep);
+    assert(msgComponent != NULL);
+
+    snprintf(expectedBuf, BUFSIZ, "HTTP/1.0 %d %s",
+             responses[codes[i]].statusCode, responses[codes[i]].statusComment);
+    assert(strcmp(msgComponent, expectedBuf) == 0);
+
+    /* date header starts with "Date: " */
+    msgComponent = strtok(NULL, msgSep);
+    assert(msgComponent != NULL);
+    assert(strncmp(datePrefix, msgComponent, strlen(datePrefix)) == 0);
+
+    /* date value can be parsed via canonical strptime */
+    tmp = msgComponent + strlen(datePrefix);
+    assert(strptime(tmp, canonFormat, &dummyTime) != NULL);
+
+    /* server info header */
+    msgComponent = strtok(NULL, msgSep);
+    assert(msgComponent != NULL);
+
+    snprintf(expectedBuf, BUFSIZ, "Server: %s/%d.%d.%d", SWS_SERVER_NAME,
+             SWS_MAJOR_VERSION, SWS_MINOR_VERSION, SWS_PATCH_VERSION);
+    assert(strcmp(msgComponent, expectedBuf) == 0);
+
+    /* no further headers */
+    msgComponent = strtok(NULL, msgSep);
+    assert(msgComponent == NULL);
+
+    (void)free(response);
+  }
+
+  printf("PASSED\n");
+}
+
 int main() {
   /* time parsing */
   test_parse_empty_time();
@@ -523,6 +599,9 @@ int main() {
   test_safe_append_off_by_one();
   test_safe_append_exact();
   test_safe_append_excess();
+
+  /* error-like responses */
+  test_error_response_generation();
 
   return 0;
 }

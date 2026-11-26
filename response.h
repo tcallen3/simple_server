@@ -81,10 +81,7 @@ static const ResponseContent responses[] = {
 static const char fallbackErrorStatus[] =
     "HTTP/1.0 500 Internal Server Error\r\n\r\n";
 
-/* TODO
 char *construct_response(RequestDetails *);
-*/
-
 char *construct_error_response(ResponseStatus);
 
 /* exposing this for testing */
