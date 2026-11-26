@@ -89,6 +89,7 @@ void destroy_connections(OpenConnections *conn) {
 void init_request_details(RequestDetails *rd) {
   rd->type = REQUEST_UNKNOWN;
   rd->relPath = NULL;
+  rd->imsCacheCheck = false;
 }
 
 /* Helper function since we don't have destructors in C */

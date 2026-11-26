@@ -45,7 +45,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "network.h"
 
 bool parse_http_request(char *, RequestDetails *);
-bool parse_http_cache_header(char *, struct tm *);
+bool parse_http_cache_header(char *, RequestDetails *);
 bool parse_http_time(const char *, struct tm *);
+bool generate_current_http_time(char *, size_t);
 
 #endif

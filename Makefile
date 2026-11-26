@@ -11,8 +11,8 @@ CFLAGS = ${TEST_CFLAGS} -Wpedantic
 PROG = sws
 TEST = test
 
-SRC = main.c network.c settings.c logging.c parser.c
-TEST_SRC = test.c network.c settings.c logging.c parser.c
+SRC = main.c network.c settings.c logging.c parser.c response.c
+TEST_SRC = test.c network.c settings.c logging.c parser.c response.c
 BIN = bin
 
 all: ${PROG} ${TEST}

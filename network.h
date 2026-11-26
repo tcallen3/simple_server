@@ -34,9 +34,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #ifndef SERVER_NETWORK_H
 #define SERVER_NETWORK_H
 
-#include <poll.h>
-
 #include <sys/socket.h>
+
+#include <poll.h>
+#include <stdbool.h>
+#include <time.h>
 
 #include "settings.h"
 
@@ -57,6 +59,8 @@ typedef struct OpenConnections {
 typedef struct RequestDetails {
   RequestType type;
   char *relPath;
+  bool imsCacheCheck;
+  struct tm imsCacheTime;
 } RequestDetails;
 
 void init_connections(OpenConnections *);

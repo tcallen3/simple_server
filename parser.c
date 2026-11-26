@@ -109,7 +109,7 @@ bool parse_http_request(char *request, RequestDetails *rcontent) {
 
 /* We only support the If-Modified-Since cache control header, which is why we
  * explicitly accept a time structure here. */
-bool parse_http_cache_header(char *hstr, struct tm *tm) {
+bool parse_http_cache_header(char *hstr, RequestDetails *rd) {
   const char imsHeader[] = "If-Modified-Since";
 
   const char *headerSep = ":";
@@ -131,7 +131,8 @@ bool parse_http_cache_header(char *hstr, struct tm *tm) {
       return false;
     }
 
-    if (parse_http_time(headerDate, tm)) {
+    if (parse_http_time(headerDate, &rd->imsCacheTime)) {
+      rd->imsCacheCheck = true;
       return true;
     }
   }
@@ -163,4 +164,16 @@ bool parse_http_time(const char *tstr, struct tm *tm) {
   }
 
   return false;
+}
+
+bool generate_current_http_time(char *buf, size_t size) {
+  time_t currTime = time(NULL);
+  struct tm *pCalTime = gmtime(&currTime);
+
+  if (strftime(buf, size, "%a, %d %b %Y %T GMT", pCalTime) == 0) {
+    /* bad write */
+    return false;
+  }
+
+  return true;
 }

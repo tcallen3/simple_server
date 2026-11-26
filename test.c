@@ -32,11 +32,14 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <assert.h>
+#include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "network.h"
 #include "parser.h"
+#include "response.h"
 
 void test_parse_empty_time() {
   printf("%s...", __FUNCTION__);
@@ -301,10 +304,13 @@ void test_parse_empty_header() {
   printf("%s...", __FUNCTION__);
 
   char request[] = "";
-  struct tm timeData;
+  RequestDetails rd;
 
-  bool bParsed = parse_http_cache_header(request, &timeData);
+  init_request_details(&rd);
+  bool bParsed = parse_http_cache_header(request, &rd);
   assert(!bParsed);
+  assert(!rd.imsCacheCheck);
+  destroy_request_details(&rd);
 
   printf("PASSED\n");
 }
@@ -313,10 +319,13 @@ void test_parse_incomplete_header() {
   printf("%s...", __FUNCTION__);
 
   char request[] = "If-Modified-Since:";
-  struct tm timeData;
+  RequestDetails rd;
 
-  bool bParsed = parse_http_cache_header(request, &timeData);
+  init_request_details(&rd);
+  bool bParsed = parse_http_cache_header(request, &rd);
   assert(!bParsed);
+  assert(!rd.imsCacheCheck);
+  destroy_request_details(&rd);
 
   printf("PASSED\n");
 }
@@ -325,10 +334,13 @@ void test_parse_unsupported_header() {
   printf("%s...", __FUNCTION__);
 
   char request[] = "Date: Sun, 06 Nov 1994 08:49:37 GMT\r\n";
-  struct tm timeData;
+  RequestDetails rd;
 
-  bool bParsed = parse_http_cache_header(request, &timeData);
+  init_request_details(&rd);
+  bool bParsed = parse_http_cache_header(request, &rd);
   assert(!bParsed);
+  assert(!rd.imsCacheCheck);
+  destroy_request_details(&rd);
 
   printf("PASSED\n");
 }
@@ -337,20 +349,148 @@ void test_parse_canon_time_header() {
   printf("%s...", __FUNCTION__);
 
   char request[] = "If-Modified-Since: Sun, 06 Nov 1994 08:49:37 GMT\r\n";
-  struct tm timeData;
+  RequestDetails rd;
 
-  bool bParsed = parse_http_cache_header(request, &timeData);
+  init_request_details(&rd);
+  bool bParsed = parse_http_cache_header(request, &rd);
   assert(bParsed);
+  assert(rd.imsCacheCheck);
 
   /* see tm(3type) man page */
-  assert(timeData.tm_wday == 0);
-  assert(timeData.tm_mday == 6);
-  assert(timeData.tm_mon == 10);
-  assert(timeData.tm_year == 94);
-  assert(timeData.tm_hour == 8);
-  assert(timeData.tm_min == 49);
-  assert(timeData.tm_sec == 37);
+  assert(rd.imsCacheTime.tm_wday == 0);
+  assert(rd.imsCacheTime.tm_mday == 6);
+  assert(rd.imsCacheTime.tm_mon == 10);
+  assert(rd.imsCacheTime.tm_year == 94);
+  assert(rd.imsCacheTime.tm_hour == 8);
+  assert(rd.imsCacheTime.tm_min == 49);
+  assert(rd.imsCacheTime.tm_sec == 37);
+  destroy_request_details(&rd);
 
+  printf("PASSED\n");
+}
+
+void test_safe_append_no_excess() {
+  printf("%s...", __FUNCTION__);
+
+  char first[] = "first";
+  char second[] = " second";
+  char expected[] = "first second";
+  size_t initialLen = strlen(first) + 1;
+  int result = 0;
+  bool success = false;
+
+  char *dst = (char *)malloc(initialLen);
+  if (dst == NULL) {
+    assert(false);
+  }
+
+  result = snprintf(dst, initialLen, "%s", first);
+  if (result < 0 || result >= (int)initialLen) {
+    (void)free(dst);
+    assert(false);
+  }
+
+  success = safe_append(dst, second, &initialLen);
+  assert(success);
+  assert(strcmp(dst, expected) == 0);
+  assert(initialLen == strlen(expected) + 1);
+
+  (void)free(dst);
+  printf("PASSED\n");
+}
+
+void test_safe_append_off_by_one() {
+  printf("%s...", __FUNCTION__);
+
+  char first[] = "first";
+  char second[] = " second";
+  char expected[] = "first second";
+  size_t initialLen = strlen(first) + strlen(second);
+  size_t savedLen = initialLen;
+  int result = 0;
+  bool success = false;
+
+  char *dst = (char *)malloc(initialLen);
+  if (dst == NULL) {
+    assert(false);
+  }
+
+  result = snprintf(dst, initialLen, "%s", first);
+  if (result < 0 || result >= (int)initialLen) {
+    (void)free(dst);
+    assert(false);
+  }
+
+  success = safe_append(dst, second, &initialLen);
+  assert(success);
+  assert(strcmp(dst, expected) == 0);
+  assert(initialLen == strlen(expected) + 1);
+  assert(initialLen > savedLen);
+
+  (void)free(dst);
+  printf("PASSED\n");
+}
+
+void test_safe_append_exact() {
+  printf("%s...", __FUNCTION__);
+
+  char first[] = "first";
+  char second[] = " second";
+  char expected[] = "first second";
+  size_t initialLen = strlen(first) + strlen(second) + 1;
+  size_t savedLen = initialLen;
+  int result = 0;
+  bool success = false;
+
+  char *dst = (char *)malloc(initialLen);
+  if (dst == NULL) {
+    assert(false);
+  }
+
+  result = snprintf(dst, initialLen, "%s", first);
+  if (result < 0 || result >= (int)initialLen) {
+    (void)free(dst);
+    assert(false);
+  }
+
+  success = safe_append(dst, second, &initialLen);
+  assert(success);
+  assert(strcmp(dst, expected) == 0);
+  assert(initialLen == strlen(expected) + 1);
+  assert(initialLen == savedLen);
+
+  (void)free(dst);
+  printf("PASSED\n");
+}
+
+void test_safe_append_excess() {
+  printf("%s...", __FUNCTION__);
+
+  char first[] = "first";
+  char second[] = " second";
+  char expected[] = "first second";
+  size_t initialLen = 1024;
+  size_t savedLen = initialLen;
+  int result = 0;
+  bool success = false;
+
+  char *dst = (char *)malloc(initialLen);
+  if (dst == NULL) {
+    assert(false);
+  }
+
+  result = snprintf(dst, initialLen, "%s", first);
+  if (result < 0 || result >= (int)initialLen) {
+    (void)free(dst);
+    assert(false);
+  }
+
+  success = safe_append(dst, second, &initialLen);
+  assert(success);
+  assert(strcmp(dst, expected) == 0);
+  assert(initialLen == savedLen);
+
+  (void)free(dst);
   printf("PASSED\n");
 }
 
@@ -377,6 +517,12 @@ int main() {
   test_parse_incomplete_header();
   test_parse_unsupported_header();
   test_parse_canon_time_header();
+
+  /* safe appending */
+  test_safe_append_no_excess();
+  test_safe_append_off_by_one();
+  test_safe_append_exact();
+  test_safe_append_excess();
 
   return 0;
 }
