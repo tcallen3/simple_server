@@ -50,6 +50,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "version.h"
 
 static const char tempDirName[] = "temp";
+static const char tempFileName[] = "testfile";
+static const char testText[] = "hello from test.c";
 
 bool test_construct_status_line(ResponseStatus status, char *buf, size_t size) {
   const ResponseContent *content = &responses[status];
@@ -613,9 +615,31 @@ void helper_compare_responses(RequestDetails *rd, ResponseStatus status) {
   (void)close(sv[1]);
 }
 
-int create_temp_dir() { return mkdir(tempDirName, S_IRWXU); }
+int create_temp_text_file(char *fname, size_t size) {
+  ssize_t nwritten = 0;
+  ssize_t expectedBytes = 0;
+  int fd = -1;
 
-int remove_temp_dir() { return rmdir(tempDirName); }
+  if (mkdir(tempDirName, S_IRWXU) == -1) {
+    return -1;
+  }
+  snprintf(fname, size, "%s/%s", tempDirName, tempFileName);
+  fd = open(fname, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+
+  expectedBytes = strlen(testText) + 1;
+  nwritten = write(fd, testText, expectedBytes);
+  if (nwritten < 0 || nwritten != expectedBytes) {
+    assert(false);
+  }
+
+  return fd;
+}
+
+void remove_temp_text_file(int fd, char *fname) {
+  (void)close(fd);
+  (void)unlink(fname);
+  (void)rmdir(tempDirName);
+}
 
 void test_unsupported_method_response() {
   printf("%s...", __FUNCTION__);
@@ -652,7 +676,6 @@ void test_nonexistent_resource_response() {
 void test_head_file_response() {
   printf("%s...", __FUNCTION__);
 
-  const char testText[] = "hello from test.c";
   const char tokSep[] = "\r\n";
   const char datePrefix[] = "Date: ";
   const char modifiedPrefix[] = "Last-Modified: ";
@@ -662,34 +685,21 @@ void test_head_file_response() {
 
   char *tmp = NULL;
   struct tm dummyTime;
-  char fname[BUFSIZ];
   char receivedBuf[BUFSIZ];
   char expectedBuf[BUFSIZ];
   char *tok = NULL;
   int sv[2];
-  int result = 0;
   int fd, rval;
-  ssize_t expectedBytes = 0;
-  ssize_t nwritten, nread;
+  ssize_t nread;
   RequestDetails rd;
 
   init_request_details(&rd);
   rd.type = REQUEST_HEAD;
   rd.relPath = (char *)malloc(BUFSIZ);
+  assert(rd.relPath != NULL);
 
-  result = create_temp_dir();
-  assert(result == 0);
-
-  snprintf(fname, BUFSIZ, "%s/testfile", tempDirName);
-  fd = open(fname, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
-
-  expectedBytes = strlen(testText) + 1;
-  nwritten = write(fd, testText, expectedBytes);
-  if (nwritten < 0 || nwritten != expectedBytes) {
-    assert(false);
-  }
-
-  snprintf(rd.relPath, BUFSIZ, "%s", fname);
+  fd = create_temp_text_file(rd.relPath, BUFSIZ);
+  assert(fd != -1);
 
   rval = socketpair(AF_UNIX, SOCK_STREAM, 0, sv);
   assert(rval == 0);
@@ -751,13 +761,11 @@ void test_head_file_response() {
   tok = strtok(NULL, tokSep);
   assert(tok == NULL);
 
-  destroy_request_details(&rd);
-
   (void)close(sv[0]);
   (void)close(sv[1]);
-  (void)close(fd);
-  (void)unlink(fname);
-  (void)remove_temp_dir();
+  remove_temp_text_file(fd, rd.relPath);
+
+  destroy_request_details(&rd);
 
   printf("PASSED\n");
 }
@@ -765,10 +773,36 @@ void test_head_file_response() {
 void test_head_ims_header_response() {
   printf("%s...", __FUNCTION__);
 
+  int fd;
+  time_t currTime;
+  RequestDetails rd;
+
+  init_request_details(&rd);
+
+  rd.type = REQUEST_HEAD;
+  rd.relPath = (char *)malloc(BUFSIZ);
+  assert(rd.relPath != NULL);
+
+  fd = create_temp_text_file(rd.relPath, BUFSIZ);
+  assert(fd != -1);
+
+  rd.imsCacheCheck = true;
+
+  currTime = time(NULL);
+  (void)gmtime_r(&currTime, &rd.imsCacheTime);
+
+  /* set year ago so IMS would return true */
+  rd.imsCacheTime.tm_year--;
+
   /* If-Modified-Since not supported for HEAD, so we should get standard
    * response */
+  helper_compare_responses(&rd, STATUS_OK);
 
-  printf("NOT IMPLEMENTED\n");
+  remove_temp_text_file(fd, rd.relPath);
+
+  destroy_request_details(&rd);
+
+  printf("PASSED\n");
 }
 
 void test_head_dir_with_index_response() {
