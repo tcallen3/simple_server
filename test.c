@@ -932,17 +932,69 @@ void test_get_file_response() {
 void test_get_ims_no_mod_response() {
   printf("%s...", __FUNCTION__);
 
-  /* 304 Not Modified */
+  int fd;
+  time_t currTime;
+  RequestDetails rd;
 
-  printf("NOT IMPLEMENTED\n");
+  init_request_details(&rd);
+
+  rd.type = REQUEST_GET;
+  rd.relPath = (char *)malloc(BUFSIZ);
+  assert(rd.relPath != NULL);
+
+  fd = create_temp_text_file(rd.relPath, BUFSIZ);
+  assert(fd != -1);
+
+  rd.imsCacheCheck = true;
+
+  currTime = time(NULL);
+  (void)gmtime_r(&currTime, &rd.imsCacheTime);
+
+  /* set year ahead so IMS would return Not Modified */
+  rd.imsCacheTime.tm_year++;
+
+  /* should return 304 Not Modified for GET request */
+  helper_compare_responses(&rd, STATUS_NOT_MODIFIED);
+
+  remove_temp_text_file(fd, rd.relPath);
+
+  destroy_request_details(&rd);
+
+  printf("PASSED\n");
 }
 
 void test_get_ims_modified_response() {
   printf("%s...", __FUNCTION__);
 
-  /* regular GET results */
+  int fd;
+  time_t currTime;
+  RequestDetails rd;
 
-  printf("NOT IMPLEMENTED\n");
+  init_request_details(&rd);
+
+  rd.type = REQUEST_GET;
+  rd.relPath = (char *)malloc(BUFSIZ);
+  assert(rd.relPath != NULL);
+
+  fd = create_temp_text_file(rd.relPath, BUFSIZ);
+  assert(fd != -1);
+
+  rd.imsCacheCheck = true;
+
+  currTime = time(NULL);
+  (void)gmtime_r(&currTime, &rd.imsCacheTime);
+
+  /* set year behind so IMS check shows modifications */
+  rd.imsCacheTime.tm_year--;
+
+  /* should get a regular successful GET response */
+  helper_compare_responses(&rd, STATUS_OK);
+
+  remove_temp_text_file(fd, rd.relPath);
+
+  destroy_request_details(&rd);
+
+  printf("PASSED\n");
 }
 
 void test_get_dir_with_index_response() {
