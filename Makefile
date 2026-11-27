@@ -4,7 +4,7 @@ TEST_CFLAGS = -g3 -Wall -Werror -Wextra -Wformat=2 -Wjump-misses-init -Wlogical-
 # avoids any header namespace changes (alternative is to manually add "bsd/" 
 # in front of numerous files).
 TEST_CFLAGS += $(shell pkg-config --cflags libbsd-overlay) 
-LD_FLAGS = $(shell pkg-config --libs libbsd-overlay)
+LD_FLAGS = $(shell pkg-config --libs libbsd-overlay) -lmagic
 
 CFLAGS = ${TEST_CFLAGS} -Wpedantic
 

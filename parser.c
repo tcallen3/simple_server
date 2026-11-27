@@ -38,6 +38,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <string.h>
 
+/* canonical: "Sun, 06 Nov 1994 08:49:37 GMT" */
+static const char canonFormat[] = "%a, %d %b %Y %T GMT";
+
 /* TODO: consider error handling debug logging? */
 
 /* Parse requests of the form "<request_type> <resource> <protocol>\r\n".
@@ -146,9 +149,6 @@ bool parse_http_cache_header(char *hstr, RequestDetails *rd) {
 bool parse_http_time(const char *tstr, struct tm *tm) {
   char *pret = NULL;
 
-  /* canonical: "Sun, 06 Nov 1994 08:49:37 GMT" */
-  const char *canonFormat = "%a, %d %b %Y %T GMT";
-
   /* alternative: "Sunday, 06-Nov-94 08:49:37 GMT" */
   const char *altCanonFormat = "%a, %d-%b-%y %T GMT";
 
@@ -170,7 +170,11 @@ bool generate_current_http_time(char *buf, size_t size) {
   time_t currTime = time(NULL);
   struct tm *pCalTime = gmtime(&currTime);
 
-  if (strftime(buf, size, "%a, %d %b %Y %T GMT", pCalTime) == 0) {
+  return generate_http_time(pCalTime, buf, size);
+}
+
+bool generate_http_time(struct tm *pTime, char *buf, size_t size) {
+  if (strftime(buf, size, canonFormat, pTime) == 0) {
     /* bad write */
     return false;
   }

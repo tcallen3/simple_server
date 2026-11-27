@@ -31,9 +31,14 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
 
+#include <sys/stat.h>
+
+#include <errno.h>
+#include <magic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "parser.h"
 #include "response.h"
@@ -60,11 +65,86 @@ bool safe_append(char *dst, const char *src, size_t *dstSize) {
   return true;
 }
 
+char *construct_canonical_resource_path(const char *relPath) {
+  char *currPath = NULL;
+  char *resolvedDir = NULL;
+  bool success = false;
+  int savedErrno = 0;
+  size_t pathSize = 0;
+
+  currPath = getcwd(NULL, 0);
+  if (currPath == NULL) {
+    return NULL;
+  }
+  pathSize = strlen(currPath) + 1;
+
+  /* add path separator if neeed */
+  if (relPath[0] != '/') {
+    success = safe_append(currPath, "/", &pathSize);
+    if (!success) {
+      goto fail;
+    }
+  }
+
+  /* append relative path */
+  success = safe_append(currPath, relPath, &pathSize);
+  if (!success) {
+    goto fail;
+  }
+
+  /* canonicalize result */
+  resolvedDir = realpath(currPath, resolvedDir);
+  if (resolvedDir == NULL) {
+    savedErrno = errno;
+    goto fail;
+  }
+
+  (void)free(currPath);
+  return resolvedDir;
+
+fail:
+  (void)free(currPath);
+  if (savedErrno != 0) {
+    errno = savedErrno;
+  }
+  return NULL;
+}
+
+/* Note: caller owns the memory for the returned string */
+char *determine_content_type(const char *fname) {
+  char *result = NULL;
+  size_t slen = 0;
+  size_t copySize = 0;
+
+  magic_t cookie = magic_open(MAGIC_MIME);
+
+  /* load default database */
+  int rval = magic_load(cookie, NULL);
+  if (rval != 0) {
+    return NULL;
+  }
+
+  /* read file type and copy result to return */
+  const char *desc = magic_file(cookie, fname);
+  slen = strlen(desc) + 1;
+  result = (char *)malloc(slen);
+  copySize = strlcpy(result, desc, slen);
+  if (copySize >= slen) {
+    free(result);
+    return NULL;
+  }
+
+  /* return magic resources */
+  magic_close(cookie);
+
+  return result;
+}
+
 bool construct_status_line(ResponseStatus status, char *buf, size_t size) {
   const ResponseContent *content = &responses[status];
   int rval = snprintf(buf, size, "HTTP/1.0 %d %s\r\n", content->statusCode,
                       content->statusComment);
-  if (rval < 0 || rval >= (int)size) {
+  if (rval < 0 || (size_t)rval >= size) {
     return false;
   }
 
@@ -80,7 +160,7 @@ bool construct_date_header(char *buf, size_t size) {
   }
 
   rval = snprintf(buf, size, "Date: %s\r\n", timeBuf);
-  if (rval < 0 || rval >= (int)size) {
+  if (rval < 0 || (size_t)rval >= size) {
     return false;
   }
 
@@ -90,49 +170,144 @@ bool construct_date_header(char *buf, size_t size) {
 bool construct_server_header(char *buf, size_t size) {
   int rval = snprintf(buf, size, "Server: %s/%d.%d.%d\r\n", SWS_SERVER_NAME,
                       SWS_MAJOR_VERSION, SWS_MINOR_VERSION, SWS_PATCH_VERSION);
-  if (rval < 0 || rval >= (int)size) {
+  if (rval < 0 || (size_t)rval >= size) {
     return false;
   }
 
   return true;
 }
 
-/* FIXME: need to get a handle to the socket so we can stream content out */
+bool construct_last_modified_header(time_t *pTime, char *buf, size_t size) {
+  char timeBuf[BUFSIZ];
+  struct tm *pCalendar = NULL;
+  int rval = 0;
+
+  pCalendar = gmtime(pTime);
+  if (pCalendar == NULL) {
+    return false;
+  }
+
+  if (!generate_http_time(pCalendar, timeBuf, BUFSIZ)) {
+    return false;
+  }
+
+  rval = snprintf(buf, size, "Last-Modified: %s\r\n", timeBuf);
+  if (rval < 0 || (size_t)rval >= size) {
+    return false;
+  }
+
+  return true;
+}
+
+bool construct_content_type_header(const char *contentType, char *buf,
+                                   size_t size) {
+  int rval = snprintf(buf, size, "Content-Type: %s\r\n", contentType);
+  if (rval < 0 || (size_t)rval >= size) {
+    return false;
+  }
+
+  return true;
+}
+
+bool construct_content_length_header(off_t fsize, char *buf, size_t bsize) {
+  int rval = snprintf(buf, bsize, "Content-Length: %ld\r\n", fsize);
+  if (rval < 0 || (size_t)rval >= bsize) {
+    return false;
+  }
+
+  return true;
+}
+
 /* TODO: support directly enumeration and index.html */
 /* TODO: support cgi-bin execution */
 /* TODO: support home directory lookup */
-char *construct_response(RequestDetails *rd) {
+void construct_response(RequestDetails *rd, int sockfd) {
   char buf[BUFSIZ];
+  char *resourcePath = NULL;
+  char *contentType = NULL;
   char *response = NULL;
+  struct stat resourceStat;
+  time_t imsTime;
   size_t responseSize = BUFSIZ;
+  size_t expectSize = 0;
+  ssize_t nwritten = 0;
   bool success = false;
 
   if (rd->type == REQUEST_UNKNOWN) {
     response = construct_error_response(STATUS_NOT_IMPLEMENTED);
-    return response;
+    goto cleanup;
   }
 
-  /* construct canonical absolute path via CWD prefix and realpath(3) */
-
   /* TODO: sanity check that path is a proper subpath of CWD (or user dir) */
+  /* construct canonical absolute path via CWD prefix and realpath(3) */
+  resourcePath = construct_canonical_resource_path(rd->relPath);
+  if (resourcePath == NULL) {
+    if (errno == EACCES) {
+      response = construct_error_response(STATUS_FORBIDDEN);
+      goto cleanup;
+    } else if (errno == ENOENT || errno == ENOTDIR || errno == EINVAL) {
+      response = construct_error_response(STATUS_NOT_FOUND);
+      goto cleanup;
+    } else {
+      goto fail;
+    }
+  }
 
   /* confirm requested content is an extant file we have access to */
+  if (stat(resourcePath, &resourceStat) == -1) {
+    if (errno == EACCES) {
+      response = construct_error_response(STATUS_FORBIDDEN);
+      goto cleanup;
+    } else if (errno == EBADF || errno == EFAULT || errno == ENOENT ||
+               errno == ENOTDIR) {
+      response = construct_error_response(STATUS_NOT_FOUND);
+      goto cleanup;
+    } else {
+      goto fail;
+    }
+  }
 
   /* TEMPORARY: until we add directory support, dir-only content is an error */
+  if (!S_ISREG(resourceStat.st_mode)) {
+    response = construct_error_response(STATUS_FORBIDDEN);
+    goto cleanup;
+  }
+
+  if (access(resourcePath, R_OK) == -1) {
+    response = construct_error_response(STATUS_FORBIDDEN);
+    goto cleanup;
+  }
 
   /* check for early exit: request is GET and If-Modified-Since applies */
-  /* If-Modified-Since returns 304 Not Modified if the file is unchanged */
+  if (rd->type == REQUEST_GET && rd->imsCacheCheck) {
+    imsTime = mktime(&rd->imsCacheTime);
+    if (imsTime == (time_t)-1) {
+      goto fail;
+    }
 
-  /* when IMS doesn't apply, we get the last-modified timestamp on the file */
+    if (difftime(resourceStat.st_mtim.tv_sec, imsTime) < 0.0) {
+      response = construct_error_response(STATUS_NOT_MODIFIED);
+      goto cleanup;
+    }
+  }
 
   /* determine content type for the file via libmagic */
+  contentType = determine_content_type(resourcePath);
+  if (contentType == NULL) {
+    goto fail;
+  }
 
-  /* open and read file to determine content-length - data is streamed, not
-   * buffered, to avoid memory growth and subtle resizing concerns */
+  /* TODO: determine content length for non-file responses */
 
-  /* construct full status line and headers for response */
-
-  /* ... */
+  /* successful reply status */
+  response = (char *)malloc(responseSize);
+  if (response == NULL) {
+    goto fail;
+  }
+  success = construct_status_line(STATUS_OK, response, responseSize);
+  if (!success) {
+    goto fail;
+  }
 
   /* response date */
   success = construct_date_header(buf, BUFSIZ);
@@ -154,16 +329,82 @@ char *construct_response(RequestDetails *rd) {
     goto fail;
   }
 
-  /* ... */
+  /* last modified */
+  success =
+      construct_last_modified_header(&resourceStat.st_mtim.tv_sec, buf, BUFSIZ);
+  if (!success) {
+    goto fail;
+  }
+  success = safe_append(response, buf, &responseSize);
+  if (!success) {
+    goto fail;
+  }
 
-  /* if request is GET, stream out file content */
+  /* content type */
+  success = construct_content_type_header(contentType, buf, BUFSIZ);
+  if (!success) {
+    goto fail;
+  }
+  success = safe_append(response, buf, &responseSize);
+  if (!success) {
+    goto fail;
+  }
 
-  return response;
+  /* content length */
+  success = construct_content_length_header(resourceStat.st_size, buf, BUFSIZ);
+  if (!success) {
+    goto fail;
+  }
+  success = safe_append(response, buf, &responseSize);
+  if (!success) {
+    goto fail;
+  }
 
-  /* FIXME: should stream out fallback error status */
-fail:
+  /* add empty line as separator/terminator */
+  success = safe_append(response, "\r\n", &responseSize);
+  if (!success) {
+    goto fail;
+  }
+
+  /* stream headers */
+  expectSize = strlen(response) + 1;
+  nwritten = write(sockfd, response, expectSize);
+  if (nwritten < 0 || (size_t)nwritten != expectSize) {
+    /* Not an error we can handle via HTTP responses, bail out */
+    (void)free(response);
+    (void)free(resourcePath);
+    (void)free(contentType);
+    return;
+  }
+
+  /* TODO: add logging */
+
+  /* TODO: if request is GET, stream out file content */
+
   (void)free(response);
-  return NULL;
+  (void)free(resourcePath);
+  (void)free(contentType);
+  return;
+
+cleanup:
+  /* Path for HTTP errors, we don't check write errors because there's nothing
+   * to do */
+  expectSize = strlen(response) + 1;
+  (void)write(sockfd, response, expectSize);
+
+  (void)free(response);
+  (void)free(resourcePath);
+  (void)free(contentType);
+  return;
+
+fail:
+  /* Stream out fallback error status */
+  expectSize = strlen(fallbackErrorStatus) + 1;
+  (void)write(sockfd, fallbackErrorStatus, expectSize);
+
+  (void)free(response);
+  (void)free(resourcePath);
+  (void)free(contentType);
 }
 
 /* Generate the status line and meaningful supported headers for a response

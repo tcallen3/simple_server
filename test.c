@@ -40,10 +40,22 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "network.h"
 #include "response.h"
 #include "version.h"
+
+bool test_construct_status_line(ResponseStatus status, char *buf, size_t size) {
+  const ResponseContent *content = &responses[status];
+  int rval = snprintf(buf, size, "HTTP/1.0 %d %s\r\n", content->statusCode,
+                      content->statusComment);
+  if (rval < 0 || (size_t)rval >= size) {
+    return false;
+  }
+
+  return true;
+}
 
 void test_parse_empty_time() {
   printf("%s...", __FUNCTION__);
@@ -570,6 +582,166 @@ void test_error_response_generation() {
   printf("PASSED\n");
 }
 
+void helper_compare_responses(RequestDetails *rd, ResponseStatus status) {
+  int sv[2];
+  int rval = 0;
+  ssize_t nread = 0;
+  char receivedBuf[BUFSIZ];
+  char expectedBuf[BUFSIZ];
+  bool success = false;
+
+  rval = socketpair(AF_UNIX, SOCK_STREAM, 0, sv);
+  assert(rval == 0);
+
+  construct_response(rd, sv[0]);
+  nread = read(sv[1], receivedBuf, BUFSIZ);
+  if (nread < 0 || nread == BUFSIZ) {
+    assert(false);
+  }
+
+  success = test_construct_status_line(status, expectedBuf, BUFSIZ);
+  assert(success);
+
+  assert(strncmp(receivedBuf, expectedBuf, strlen(expectedBuf)) == 0);
+
+  (void)close(sv[0]);
+  (void)close(sv[1]);
+}
+
+void test_unsupported_method_response() {
+  printf("%s...", __FUNCTION__);
+
+  RequestDetails rd;
+
+  init_request_details(&rd);
+  rd.type = REQUEST_UNKNOWN;
+
+  helper_compare_responses(&rd, STATUS_NOT_IMPLEMENTED);
+
+  destroy_request_details(&rd);
+
+  printf("PASSED\n");
+}
+
+void test_nonexistent_resource_response() {
+  printf("%s...", __FUNCTION__);
+
+  RequestDetails rd;
+
+  init_request_details(&rd);
+  rd.type = REQUEST_HEAD;
+  rd.relPath = (char *)malloc(BUFSIZ);
+  snprintf(rd.relPath, BUFSIZ, "bad/path");
+
+  helper_compare_responses(&rd, STATUS_NOT_FOUND);
+
+  destroy_request_details(&rd);
+
+  printf("PASSED\n");
+}
+
+void test_bad_file_type_resource_response() {
+  printf("%s...", __FUNCTION__);
+
+  printf("NOT IMPLEMENTED\n");
+}
+
+void test_head_file_response() {
+  printf("%s...", __FUNCTION__);
+
+  /* make sure to check all headers as well, so we can focus on just the status
+   * line in other head tests */
+
+  printf("NOT IMPLEMENTED\n");
+}
+
+void test_head_ims_header_response() {
+  printf("%s...", __FUNCTION__);
+
+  /* If-Modified-Since not supported for HEAD, so we should get standard
+   * response */
+
+  printf("NOT IMPLEMENTED\n");
+}
+
+void test_head_dir_with_index_response() {
+  printf("%s...", __FUNCTION__);
+
+  /* returns HEAD for index.html */
+
+  printf("NOT IMPLEMENTED\n");
+}
+
+void test_head_dir_no_index_response() {
+  printf("%s...", __FUNCTION__);
+
+  /* builds and returns HEAD for directory index */
+
+  printf("NOT IMPLEMENTED\n");
+}
+
+void test_head_cgi_bin_response() {
+  printf("%s...", __FUNCTION__);
+
+  printf("NOT IMPLEMENTED\n");
+}
+
+void test_head_user_dir_response() {
+  printf("%s...", __FUNCTION__);
+
+  printf("NOT IMPLEMENTED\n");
+}
+
+void test_get_file_response() {
+  printf("%s...", __FUNCTION__);
+
+  printf("NOT IMPLEMENTED\n");
+}
+
+void test_get_ims_no_mod_response() {
+  printf("%s...", __FUNCTION__);
+
+  /* 304 Not Modified */
+
+  printf("NOT IMPLEMENTED\n");
+}
+
+void test_get_ims_modified_response() {
+  printf("%s...", __FUNCTION__);
+
+  /* regular GET results */
+
+  printf("NOT IMPLEMENTED\n");
+}
+
+void test_get_dir_with_index_response() {
+  printf("%s...", __FUNCTION__);
+
+  /* returns contents of index.html */
+
+  printf("NOT IMPLEMENTED\n");
+}
+
+void test_get_dir_no_index_response() {
+  printf("%s...", __FUNCTION__);
+
+  /* builds and returns directory index */
+
+  printf("NOT IMPLEMENTED\n");
+}
+
+void test_get_cgi_bin_response() {
+  printf("%s...", __FUNCTION__);
+
+  printf("NOT IMPLEMENTED\n");
+}
+
+void test_get_user_dir_response() {
+  printf("%s...", __FUNCTION__);
+
+  printf("NOT IMPLEMENTED\n");
+}
+
 int main() {
   /* time parsing */
   test_parse_empty_time();
@@ -602,6 +774,28 @@ int main() {
 
   /* error-like responses */
   test_error_response_generation();
+
+  /* oddball responses */
+  test_unsupported_method_response();
+  test_nonexistent_resource_response();
+  test_bad_file_type_resource_response();
+
+  /* HEAD responses */
+  test_head_file_response();
+  test_head_ims_header_response();
+  test_head_dir_with_index_response();
+  test_head_dir_no_index_response();
+  test_head_cgi_bin_response();
+  test_head_user_dir_response();
+
+  /* GET responses */
+  test_get_file_response();
+  test_get_ims_no_mod_response();
+  test_get_ims_modified_response();
+  test_get_dir_with_index_response();
+  test_get_dir_no_index_response();
+  test_get_cgi_bin_response();
+  test_get_user_dir_response();
 
   return 0;
 }
