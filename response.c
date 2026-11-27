@@ -219,6 +219,20 @@ bool construct_content_length_header(off_t fsize, char *buf, size_t bsize) {
   return true;
 }
 
+/* best-effort server error message in case something goes very wrong */
+void send_fallback_error_response(int sockfd) {
+  (void)write(sockfd, fallbackErrorStatus, strlen(fallbackErrorStatus));
+}
+
+void send_error_response(ResponseStatus status, int sockfd) {
+  char *response = construct_error_response(status);
+  if (response != NULL) {
+    (void)write(sockfd, response, strlen(response));
+  }
+
+  (void)free(response);
+}
+
 /* TODO: support directly enumeration and index.html */
 /* TODO: support cgi-bin execution */
 /* TODO: support home directory lookup */
@@ -238,7 +252,7 @@ void construct_response(RequestDetails *rd, int sockfd) {
   int fd = -1;
 
   if (rd->type == REQUEST_UNKNOWN) {
-    response = construct_error_response(STATUS_NOT_IMPLEMENTED);
+    send_error_response(STATUS_NOT_IMPLEMENTED, sockfd);
     goto cleanup;
   }
 
@@ -247,10 +261,10 @@ void construct_response(RequestDetails *rd, int sockfd) {
   resourcePath = construct_canonical_resource_path(rd->relPath);
   if (resourcePath == NULL) {
     if (errno == EACCES) {
-      response = construct_error_response(STATUS_FORBIDDEN);
+      send_error_response(STATUS_FORBIDDEN, sockfd);
       goto cleanup;
     } else if (errno == ENOENT || errno == ENOTDIR || errno == EINVAL) {
-      response = construct_error_response(STATUS_NOT_FOUND);
+      send_error_response(STATUS_NOT_FOUND, sockfd);
       goto cleanup;
     } else {
       goto fail;
@@ -260,11 +274,11 @@ void construct_response(RequestDetails *rd, int sockfd) {
   /* confirm requested content is an extant file we have access to */
   if (stat(resourcePath, &resourceStat) == -1) {
     if (errno == EACCES) {
-      response = construct_error_response(STATUS_FORBIDDEN);
+      send_error_response(STATUS_FORBIDDEN, sockfd);
       goto cleanup;
     } else if (errno == EBADF || errno == EFAULT || errno == ENOENT ||
                errno == ENOTDIR) {
-      response = construct_error_response(STATUS_NOT_FOUND);
+      send_error_response(STATUS_NOT_FOUND, sockfd);
       goto cleanup;
     } else {
       goto fail;
@@ -273,12 +287,12 @@ void construct_response(RequestDetails *rd, int sockfd) {
 
   /* TEMPORARY: until we add directory support, dir-only content is an error */
   if (!S_ISREG(resourceStat.st_mode)) {
-    response = construct_error_response(STATUS_FORBIDDEN);
+    send_error_response(STATUS_FORBIDDEN, sockfd);
     goto cleanup;
   }
 
   if (access(resourcePath, R_OK) == -1) {
-    response = construct_error_response(STATUS_FORBIDDEN);
+    send_error_response(STATUS_FORBIDDEN, sockfd);
     goto cleanup;
   }
 
@@ -290,7 +304,7 @@ void construct_response(RequestDetails *rd, int sockfd) {
     }
 
     if (difftime(resourceStat.st_mtim.tv_sec, imsTime) < 0.0) {
-      response = construct_error_response(STATUS_NOT_MODIFIED);
+      send_error_response(STATUS_NOT_MODIFIED, sockfd);
       goto cleanup;
     }
   }
@@ -406,20 +420,13 @@ void construct_response(RequestDetails *rd, int sockfd) {
   return;
 
 cleanup:
-  /* Path for HTTP errors, we don't check write errors because there's nothing
-   * to do */
-  expectSize = strlen(response) + 1;
-  (void)write(sockfd, response, expectSize);
-
   (void)free(response);
   (void)free(resourcePath);
   (void)free(contentType);
   return;
 
 fail:
-  /* Stream out fallback error status */
-  expectSize = strlen(fallbackErrorStatus) + 1;
-  (void)write(sockfd, fallbackErrorStatus, expectSize);
+  send_fallback_error_response(sockfd);
 
   (void)free(response);
   (void)free(resourcePath);

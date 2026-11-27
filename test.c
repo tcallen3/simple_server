@@ -259,7 +259,8 @@ void test_parse_unsupported_request() {
   init_request_details(&rd);
 
   bool bParsed = parse_http_request(request, &rd);
-  assert(!bParsed);
+  assert(bParsed);
+  assert(rd.type == REQUEST_UNKNOWN);
 
   destroy_request_details(&rd);
 

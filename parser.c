@@ -35,6 +35,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * strptime availability */
 #include "parser.h"
 
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -43,13 +44,29 @@ static const char canonFormat[] = "%a, %d %b %Y %T GMT";
 
 /* TODO: consider error handling debug logging? */
 
+/* copy the resource path component so RequestDetails owns its memory */
+bool copy_path_token(char *pathToken, RequestDetails *rd) {
+  size_t slen, nlen;
+
+  slen = strlen(pathToken);
+  nlen = slen + 1;
+  rd->relPath = (char *)malloc(nlen);
+  if (rd->relPath == NULL) {
+    return false;
+  }
+  if (strlcpy(rd->relPath, pathToken, nlen) != slen) {
+    errno = ENOBUFS;
+    return false;
+  }
+
+  return true;
+}
+
 /* Parse requests of the form "<request_type> <resource> <protocol>\r\n".
  * We only support GET and HEAD for this server, and we ignore the protocol
  * portion of the header. Effectively, anything beyond HTTP/1.0 gets silently
  * downgraded. */
 bool parse_http_request(char *request, RequestDetails *rcontent) {
-  size_t slen = 0;
-  size_t nlen = 0;
   const char *lws = " \t";
   const char *keyGet = "GET";
   const char *keyHead = "HEAD";
@@ -70,19 +87,7 @@ bool parse_http_request(char *request, RequestDetails *rcontent) {
       return false;
     }
 
-    /* copy the resource path component so RequestDetails owns its memory */
-    slen = strlen(pathToken);
-    nlen = slen + 1;
-    rcontent->relPath = (char *)malloc(nlen);
-    if (rcontent->relPath == NULL) {
-      return false;
-    }
-    if (strlcpy(rcontent->relPath, pathToken, nlen) != slen) {
-      return false;
-    }
-
-    /* we have what we need, so count it as a success */
-    return true;
+    return copy_path_token(pathToken, rcontent);
   } else if (strcmp(reqToken, keyHead) == 0) {
     rcontent->type = REQUEST_HEAD;
 
@@ -91,23 +96,18 @@ bool parse_http_request(char *request, RequestDetails *rcontent) {
       return false;
     }
 
-    /* copy the resource path component so RequestDetails owns its memory */
-    slen = strlen(pathToken);
-    nlen = slen + 1;
-    rcontent->relPath = (char *)malloc(nlen);
-    if (rcontent->relPath == NULL) {
-      return false;
-    }
-    if (strlcpy(rcontent->relPath, pathToken, nlen) != slen) {
-      return false;
-    }
-
-    /* we have what we need, so count it as a success */
-    return true;
+    return copy_path_token(pathToken, rcontent);
   }
 
-  /* no supported request types matched */
-  return false;
+  /* no matching supported request types, but propagate for BAD_REQUEST handling
+   * in response code */
+  rcontent->type = REQUEST_UNKNOWN;
+  pathToken = strtok(NULL, lws);
+  if (pathToken == NULL) {
+    return false;
+  }
+
+  return copy_path_token(pathToken, rcontent);
 }
 
 /* We only support the If-Modified-Since cache control header, which is why we

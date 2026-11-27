@@ -47,6 +47,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "logging.h"
 #include "network.h"
+#include "parser.h"
+#include "response.h"
 
 #ifndef WAITANY
 #define WAITANY -1
@@ -261,19 +263,75 @@ void accept_connection(int sockfd) {
  *      7. Transmit response
  */
 void process_request(int sockfd, struct sockaddr *client_addr) {
+  const char lineSep[] = "\r\n";
+  char *currLine = NULL;
+  char *request = NULL;
   char buf[BUFSIZ];
+  size_t reqSize = BUFSIZ;
   ssize_t bytes;
-  socklen_t size;
+  socklen_t addrSize;
+  RequestDetails rd;
 
-  /* NOTE: not sure if this is right usage of client_addr... */
-  size = sizeof(*client_addr);
-  while ((bytes = recvfrom(sockfd, buf, BUFSIZ - 2, 0, client_addr, &size)) >
-         0) {
+  init_request_details(&rd);
+
+  request = (char *)malloc(reqSize);
+  if (request == NULL) {
+    /* OOM */
+    goto fail;
+  }
+  /* start with empty string */
+  request[0] = '\0';
+
+  /* build up incoming request */
+  /* NOTE: recvfrom will let us send client_addr and size on for logging */
+  addrSize = sizeof(*client_addr);
+  while ((bytes = recvfrom(sockfd, buf, BUFSIZ - 2, MSG_DONTWAIT, client_addr,
+                           &addrSize)) > 0) {
     buf[bytes] = '\0';
-    log_debug(buf);
+    if (!safe_append(request, buf, &reqSize)) {
+      goto fail;
+    }
   }
 
-  if (bytes == -1) {
-    log_debug("receiving data from socket failed");
+  if (bytes == -1 && errno != EWOULDBLOCK) {
+    goto fail;
   }
+
+  /* FIXME: need to copy out lines to separate buffers to avoid strtok stepping
+   * on itself during nested parsing */
+
+  /* parse request into RequestDetails structure */
+  currLine = strtok(request, lineSep);
+  if (currLine == NULL) {
+    send_error_response(STATUS_BAD_REQUEST, sockfd);
+    goto cleanup;
+  }
+  if (!parse_http_request(currLine, &rd)) {
+    if (errno == ENOBUFS) {
+      /* our fault */
+      goto fail;
+    }
+    /* their fault */
+    send_error_response(STATUS_BAD_REQUEST, sockfd);
+    goto cleanup;
+  }
+
+  /* check for If-Modified-Since header */
+  while ((currLine = strtok(NULL, lineSep)) != NULL) {
+    (void)parse_http_cache_header(currLine, &rd);
+  }
+
+  /* construct and send response based on RequestDetails */
+  construct_response(&rd, sockfd);
+
+cleanup:
+  (void)free(request);
+  destroy_request_details(&rd);
+  return;
+
+fail:
+  send_fallback_error_response(sockfd);
+  (void)free(request);
+  destroy_request_details(&rd);
+  return;
 }
