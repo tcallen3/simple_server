@@ -830,7 +830,103 @@ void test_head_user_dir_response() {
 void test_get_file_response() {
   printf("%s...", __FUNCTION__);
 
-  printf("NOT IMPLEMENTED\n");
+  const char tokSep[] = "\r\n";
+  const char datePrefix[] = "Date: ";
+  const char modifiedPrefix[] = "Last-Modified: ";
+  const char canonFormat[] = "%a, %d %b %Y %T GMT";
+  const char contentPrefix[] = "Content-Type: ";
+  const char lengthPrefix[] = "Content-Length: ";
+
+  char *tmp = NULL;
+  struct tm dummyTime;
+  char receivedBuf[BUFSIZ];
+  char expectedBuf[BUFSIZ];
+  char *tok = NULL;
+  int sv[2];
+  int fd, rval;
+  ssize_t nread;
+  RequestDetails rd;
+
+  init_request_details(&rd);
+  rd.type = REQUEST_GET;
+  rd.relPath = (char *)malloc(BUFSIZ);
+  assert(rd.relPath != NULL);
+
+  fd = create_temp_text_file(rd.relPath, BUFSIZ);
+  assert(fd != -1);
+
+  rval = socketpair(AF_UNIX, SOCK_STREAM, 0, sv);
+  assert(rval == 0);
+
+  construct_response(&rd, sv[0]);
+  nread = read(sv[1], receivedBuf, BUFSIZ);
+  if (nread < 0 || nread >= BUFSIZ) {
+    assert(false);
+  }
+
+  /* check status line */
+  tok = strtok(receivedBuf, tokSep);
+  assert(tok != NULL);
+
+  snprintf(expectedBuf, BUFSIZ, "HTTP/1.0 %d %s",
+           responses[STATUS_OK].statusCode, responses[STATUS_OK].statusComment);
+  assert(strcmp(tok, expectedBuf) == 0);
+
+  /* check date */
+  tok = strtok(NULL, tokSep);
+  assert(tok != NULL);
+  assert(strncmp(datePrefix, tok, strlen(datePrefix)) == 0);
+
+  /* date value can be parsed via canonical strptime */
+  tmp = tok + strlen(datePrefix);
+  assert(strptime(tmp, canonFormat, &dummyTime) != NULL);
+
+  /* check server */
+  tok = strtok(NULL, tokSep);
+  assert(tok != NULL);
+
+  snprintf(expectedBuf, BUFSIZ, "Server: %s/%d.%d.%d", SWS_SERVER_NAME,
+           SWS_MAJOR_VERSION, SWS_MINOR_VERSION, SWS_PATCH_VERSION);
+  assert(strcmp(tok, expectedBuf) == 0);
+
+  /* check last-modified */
+  tok = strtok(NULL, tokSep);
+  assert(tok != NULL);
+  assert(strncmp(modifiedPrefix, tok, strlen(modifiedPrefix)) == 0);
+
+  /* date value can be parsed via canonical strptime */
+  tmp = tok + strlen(modifiedPrefix);
+  assert(strptime(tmp, canonFormat, &dummyTime) != NULL);
+
+  /* check content-type prefix, specific type is tricky, so omit that portion */
+  tok = strtok(NULL, tokSep);
+  assert(tok != NULL);
+  assert(strncmp(contentPrefix, tok, strlen(contentPrefix)) == 0);
+
+  /* check content-length */
+  tok = strtok(NULL, tokSep);
+  assert(tok != NULL);
+  assert(strncmp(lengthPrefix, tok, strlen(lengthPrefix)) == 0);
+
+  tmp = tok + strlen(modifiedPrefix);
+  assert(atoi(tmp) == strlen(testText) + 1);
+
+  /* check actual file content */
+  tok = strtok(NULL, tokSep);
+  assert(tok != NULL);
+  assert(strncmp(testText, tok, strlen(testText)) == 0);
+
+  /* check end of stream */
+  tok = strtok(NULL, tokSep);
+  assert(tok == NULL);
+
+  (void)close(sv[0]);
+  (void)close(sv[1]);
+  remove_temp_text_file(fd, rd.relPath);
+
+  destroy_request_details(&rd);
+
+  printf("PASSED\n");
 }
 
 void test_get_ims_no_mod_response() {

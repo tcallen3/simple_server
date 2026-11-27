@@ -34,6 +34,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/stat.h>
 
 #include <errno.h>
+#include <fcntl.h>
 #include <magic.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -223,6 +224,7 @@ bool construct_content_length_header(off_t fsize, char *buf, size_t bsize) {
 /* TODO: support home directory lookup */
 void construct_response(RequestDetails *rd, int sockfd) {
   char buf[BUFSIZ];
+  char getFinalLine[] = "\r\n\r\n";
   char *resourcePath = NULL;
   char *contentType = NULL;
   char *response = NULL;
@@ -231,7 +233,9 @@ void construct_response(RequestDetails *rd, int sockfd) {
   size_t responseSize = BUFSIZ;
   size_t expectSize = 0;
   ssize_t nwritten = 0;
+  ssize_t nread = 0;
   bool success = false;
+  int fd = -1;
 
   if (rd->type == REQUEST_UNKNOWN) {
     response = construct_error_response(STATUS_NOT_IMPLEMENTED);
@@ -367,7 +371,7 @@ void construct_response(RequestDetails *rd, int sockfd) {
   }
 
   /* stream headers */
-  expectSize = strlen(response) + 1;
+  expectSize = strlen(response);
   nwritten = write(sockfd, response, expectSize);
   if (nwritten < 0 || (size_t)nwritten != expectSize) {
     /* Not an error we can handle via HTTP responses, bail out */
@@ -379,7 +383,22 @@ void construct_response(RequestDetails *rd, int sockfd) {
 
   /* TODO: add logging */
 
-  /* TODO: if request is GET, stream out file content */
+  /* if request is GET, stream out file content */
+  if (rd->type == REQUEST_GET) {
+    fd = open(resourcePath, O_RDONLY);
+    /* error is -1 which we can't do much about other than skip to the end */
+    if (fd >= 0) {
+      while ((nread = read(fd, buf, BUFSIZ)) > 0) {
+        nwritten = write(sockfd, buf, nread);
+        if (nwritten == -1) {
+          /* again, we skip errors because there's nothing we can do here */
+          break;
+        }
+      }
+      (void)write(sockfd, getFinalLine, strlen(getFinalLine));
+      (void)close(fd);
+    }
+  }
 
   (void)free(response);
   (void)free(resourcePath);
