@@ -791,8 +791,8 @@ void test_head_ims_header_response() {
   currTime = time(NULL);
   (void)gmtime_r(&currTime, &rd.imsCacheTime);
 
-  /* set year ago so IMS would return true */
-  rd.imsCacheTime.tm_year--;
+  /* set year ahead so IMS would return Not Modified */
+  rd.imsCacheTime.tm_year++;
 
   /* If-Modified-Since not supported for HEAD, so we should get standard
    * response */
