@@ -35,7 +35,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * strptime availability */
 #include "parser.h"
 
+#include <sys/stat.h>
+
 #include <assert.h>
+#include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,6 +48,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "network.h"
 #include "response.h"
 #include "version.h"
+
+static const char tempDirName[] = "temp";
 
 bool test_construct_status_line(ResponseStatus status, char *buf, size_t size) {
   const ResponseContent *content = &responses[status];
@@ -595,7 +600,7 @@ void helper_compare_responses(RequestDetails *rd, ResponseStatus status) {
 
   construct_response(rd, sv[0]);
   nread = read(sv[1], receivedBuf, BUFSIZ);
-  if (nread < 0 || nread == BUFSIZ) {
+  if (nread < 0 || nread >= BUFSIZ) {
     assert(false);
   }
 
@@ -607,6 +612,10 @@ void helper_compare_responses(RequestDetails *rd, ResponseStatus status) {
   (void)close(sv[0]);
   (void)close(sv[1]);
 }
+
+int create_temp_dir() { return mkdir(tempDirName, S_IRWXU); }
+
+int remove_temp_dir() { return rmdir(tempDirName); }
 
 void test_unsupported_method_response() {
   printf("%s...", __FUNCTION__);
@@ -640,19 +649,117 @@ void test_nonexistent_resource_response() {
   printf("PASSED\n");
 }
 
-void test_bad_file_type_resource_response() {
-  printf("%s...", __FUNCTION__);
-
-  printf("NOT IMPLEMENTED\n");
-}
-
 void test_head_file_response() {
   printf("%s...", __FUNCTION__);
 
-  /* make sure to check all headers as well, so we can focus on just the status
-   * line in other head tests */
+  const char testText[] = "hello from test.c";
+  const char tokSep[] = "\r\n";
+  const char datePrefix[] = "Date: ";
+  const char modifiedPrefix[] = "Last-Modified: ";
+  const char canonFormat[] = "%a, %d %b %Y %T GMT";
+  const char contentPrefix[] = "Content-Type: ";
+  const char lengthPrefix[] = "Content-Length: ";
 
-  printf("NOT IMPLEMENTED\n");
+  char *tmp = NULL;
+  struct tm dummyTime;
+  char fname[BUFSIZ];
+  char receivedBuf[BUFSIZ];
+  char expectedBuf[BUFSIZ];
+  char *tok = NULL;
+  int sv[2];
+  int result = 0;
+  int fd, rval;
+  ssize_t expectedBytes = 0;
+  ssize_t nwritten, nread;
+  RequestDetails rd;
+
+  init_request_details(&rd);
+  rd.type = REQUEST_HEAD;
+  rd.relPath = (char *)malloc(BUFSIZ);
+
+  result = create_temp_dir();
+  assert(result == 0);
+
+  snprintf(fname, BUFSIZ, "%s/testfile", tempDirName);
+  fd = open(fname, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+
+  expectedBytes = strlen(testText) + 1;
+  nwritten = write(fd, testText, expectedBytes);
+  if (nwritten < 0 || nwritten != expectedBytes) {
+    assert(false);
+  }
+
+  snprintf(rd.relPath, BUFSIZ, "%s", fname);
+
+  rval = socketpair(AF_UNIX, SOCK_STREAM, 0, sv);
+  assert(rval == 0);
+
+  construct_response(&rd, sv[0]);
+  nread = read(sv[1], receivedBuf, BUFSIZ);
+  if (nread < 0 || nread >= BUFSIZ) {
+    assert(false);
+  }
+
+  /* check status line */
+  tok = strtok(receivedBuf, tokSep);
+  assert(tok != NULL);
+
+  snprintf(expectedBuf, BUFSIZ, "HTTP/1.0 %d %s",
+           responses[STATUS_OK].statusCode, responses[STATUS_OK].statusComment);
+  assert(strcmp(tok, expectedBuf) == 0);
+
+  /* check date */
+  tok = strtok(NULL, tokSep);
+  assert(tok != NULL);
+  assert(strncmp(datePrefix, tok, strlen(datePrefix)) == 0);
+
+  /* date value can be parsed via canonical strptime */
+  tmp = tok + strlen(datePrefix);
+  assert(strptime(tmp, canonFormat, &dummyTime) != NULL);
+
+  /* check server */
+  tok = strtok(NULL, tokSep);
+  assert(tok != NULL);
+
+  snprintf(expectedBuf, BUFSIZ, "Server: %s/%d.%d.%d", SWS_SERVER_NAME,
+           SWS_MAJOR_VERSION, SWS_MINOR_VERSION, SWS_PATCH_VERSION);
+  assert(strcmp(tok, expectedBuf) == 0);
+
+  /* check last-modified */
+  tok = strtok(NULL, tokSep);
+  assert(tok != NULL);
+  assert(strncmp(modifiedPrefix, tok, strlen(modifiedPrefix)) == 0);
+
+  /* date value can be parsed via canonical strptime */
+  tmp = tok + strlen(modifiedPrefix);
+  assert(strptime(tmp, canonFormat, &dummyTime) != NULL);
+
+  /* check content-type prefix */
+  tok = strtok(NULL, tokSep);
+  assert(tok != NULL);
+  assert(strncmp(contentPrefix, tok, strlen(contentPrefix)) == 0);
+
+  /* check content-length, specific type is tricky, so we omit that portion */
+  tok = strtok(NULL, tokSep);
+  assert(tok != NULL);
+  assert(strncmp(lengthPrefix, tok, strlen(lengthPrefix)) == 0);
+
+  tmp = tok + strlen(modifiedPrefix);
+  assert(atoi(tmp) == strlen(testText) + 1);
+
+  /* check end of stream */
+  tok = strtok(NULL, tokSep);
+  assert(tok == NULL);
+
+  destroy_request_details(&rd);
+
+  (void)close(sv[0]);
+  (void)close(sv[1]);
+  (void)close(fd);
+  (void)unlink(fname);
+  (void)remove_temp_dir();
+
+  printf("PASSED\n");
 }
 
 void test_head_ims_header_response() {
@@ -676,12 +783,6 @@ void test_head_dir_no_index_response() {
   printf("%s...", __FUNCTION__);
 
   /* builds and returns HEAD for directory index */
-
-  printf("NOT IMPLEMENTED\n");
-}
-
-void test_head_cgi_bin_response() {
-  printf("%s...", __FUNCTION__);
 
   printf("NOT IMPLEMENTED\n");
 }
@@ -730,12 +831,6 @@ void test_get_dir_no_index_response() {
   printf("NOT IMPLEMENTED\n");
 }
 
-void test_get_cgi_bin_response() {
-  printf("%s...", __FUNCTION__);
-
-  printf("NOT IMPLEMENTED\n");
-}
-
 void test_get_user_dir_response() {
   printf("%s...", __FUNCTION__);
 
@@ -778,14 +873,12 @@ int main() {
   /* oddball responses */
   test_unsupported_method_response();
   test_nonexistent_resource_response();
-  test_bad_file_type_resource_response();
 
   /* HEAD responses */
   test_head_file_response();
   test_head_ims_header_response();
   test_head_dir_with_index_response();
   test_head_dir_no_index_response();
-  test_head_cgi_bin_response();
   test_head_user_dir_response();
 
   /* GET responses */
@@ -794,7 +887,6 @@ int main() {
   test_get_ims_modified_response();
   test_get_dir_with_index_response();
   test_get_dir_no_index_response();
-  test_get_cgi_bin_response();
   test_get_user_dir_response();
 
   return 0;
