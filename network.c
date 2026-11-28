@@ -91,13 +91,16 @@ void destroy_connections(OpenConnections *conn) {
 void init_request_details(RequestDetails *rd) {
   rd->type = REQUEST_UNKNOWN;
   rd->relPath = NULL;
+  rd->remoteIp = NULL;
   rd->imsCacheCheck = false;
 }
 
 /* Helper function since we don't have destructors in C */
 void destroy_request_details(RequestDetails *rd) {
   /* RequestDetails owns its memory */
+  (void)free(rd->remoteIp);
   (void)free(rd->relPath);
+  rd->remoteIp = NULL;
   rd->relPath = NULL;
 }
 
@@ -253,6 +256,22 @@ void accept_connection(int sockfd) {
   }
 }
 
+void record_remote_ip(RequestDetails *rd, int sockfd) {
+  char servBuf[NI_MAXSERV];
+  struct sockaddr raddr;
+  socklen_t raddrlen;
+
+  rd->remoteIp = (char *)malloc(NI_MAXHOST);
+  if (rd->remoteIp == NULL) {
+    return;
+  }
+
+  if (getsockname(sockfd, &raddr, &raddrlen) == 0) {
+    (void)getnameinfo(&raddr, raddrlen, rd->remoteIp, NI_MAXHOST, servBuf,
+                      sizeof(servBuf), NI_NUMERICHOST | NI_NUMERICSERV);
+  }
+}
+
 /* Code to organize request handling. The basic components are:
  *      1. Split TCP input into request + optional headers
  *      2. Parse request for type and resource
@@ -270,7 +289,9 @@ void process_request(int sockfd, struct sockaddr *client_addr) {
   char buf[BUFSIZ];
   size_t reqSize = BUFSIZ;
   ssize_t bytes;
+  time_t rtime;
   socklen_t addrSize;
+  ResponseStatus status;
   RequestDetails rd;
 
   init_request_details(&rd);
@@ -278,6 +299,7 @@ void process_request(int sockfd, struct sockaddr *client_addr) {
   request = (char *)malloc(reqSize);
   if (request == NULL) {
     /* OOM */
+    rd.status = responses[STATUS_SERVER_ERROR].statusCode;
     goto fail;
   }
   /* start with empty string */
@@ -290,37 +312,53 @@ void process_request(int sockfd, struct sockaddr *client_addr) {
                            &addrSize)) > 0) {
     buf[bytes] = '\0';
     if (!safe_append(request, buf, &reqSize)) {
+      rd.status = responses[STATUS_SERVER_ERROR].statusCode;
       goto fail;
     }
   }
 
   if (bytes == -1 && errno != EWOULDBLOCK) {
+    rd.status = responses[STATUS_SERVER_ERROR].statusCode;
     goto fail;
   }
 
-  /* FIXME: need to copy out lines to separate buffers to avoid strtok stepping
-   * on itself during nested parsing */
+  /* record requesting IP address */
+  record_remote_ip(&rd, sockfd);
+
+  /* record request time */
+  rtime = time(NULL);
+  (void)gmtime_r(&rtime, &rd.requestTime);
 
   /* parse request into RequestDetails structure */
   currLine = strtok_r(request, lineSep, &saveptr);
   if (currLine == NULL) {
-    send_error_response(STATUS_BAD_REQUEST, sockfd);
+    status = STATUS_BAD_REQUEST;
+    send_error_response(status, sockfd);
+    rd.status = responses[status].statusCode;
     goto cleanup;
   }
+
+  /* copy first line into RequestDetails, ignoring truncation */
+  (void)snprintf(rd.requestLine, BUFSIZ, "%s", currLine);
 
   if (!parse_http_request(currLine, &rd)) {
     if (errno == ENOBUFS) {
       /* our fault */
+      rd.status = responses[STATUS_SERVER_ERROR].statusCode;
       goto fail;
     }
     /* their fault */
+    status = STATUS_BAD_REQUEST;
     send_error_response(STATUS_BAD_REQUEST, sockfd);
+    rd.status = responses[status].statusCode;
     goto cleanup;
   }
 
   /* shortcut POST requests with potentially large bodies */
   if (rd.type == REQUEST_UNKNOWN) {
+    status = STATUS_BAD_REQUEST;
     send_error_response(STATUS_NOT_IMPLEMENTED, sockfd);
+    rd.status = responses[status].statusCode;
     goto cleanup;
   }
 
@@ -333,11 +371,13 @@ void process_request(int sockfd, struct sockaddr *client_addr) {
   construct_response(&rd, sockfd);
 
 cleanup:
+  log_request(&rd);
   (void)free(request);
   destroy_request_details(&rd);
   return;
 
 fail:
+  log_request(&rd);
   send_fallback_error_response(sockfd);
   (void)free(request);
   destroy_request_details(&rd);

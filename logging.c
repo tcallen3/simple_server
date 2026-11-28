@@ -84,3 +84,25 @@ void log_escaped(const char *msg) {
 
   fprintf(stderr, "\n");
 }
+
+void log_request(RequestDetails *rd) {
+  const char unknown[] = "unknown";
+  const char timeFormat[] = "%Y-%m-%dT%TZ";
+  const char *ipAddr;
+  const char *tstamp;
+  char timestamp[BUFSIZ];
+
+  if (logfile == NULL) {
+    /* default is no logging */
+    return;
+  }
+
+  ipAddr = (rd->remoteIp == NULL || strlen(rd->remoteIp) == 0) ? unknown
+                                                               : rd->remoteIp;
+  tstamp = (strftime(timestamp, BUFSIZ, timeFormat, &rd->requestTime) == 0)
+               ? unknown
+               : timestamp;
+
+  fprintf(logfile, "%s %s \"%s\" %d %lu\n", ipAddr, tstamp, rd->requestLine,
+          rd->status, rd->contentLen);
+}

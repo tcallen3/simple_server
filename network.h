@@ -38,6 +38,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <poll.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <time.h>
 
 #include "settings.h"
@@ -58,9 +59,14 @@ typedef struct OpenConnections {
 /* owns memory for strings */
 typedef struct RequestDetails {
   RequestType type;
+  int status;
+  size_t contentLen;
   char *relPath;
+  char requestLine[BUFSIZ];
   bool imsCacheCheck;
   struct tm imsCacheTime;
+  struct tm requestTime;
+  char *remoteIp;
 } RequestDetails;
 
 void init_connections(OpenConnections *);

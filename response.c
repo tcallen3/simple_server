@@ -248,11 +248,13 @@ void construct_response(RequestDetails *rd, int sockfd) {
   size_t expectSize = 0;
   ssize_t nwritten = 0;
   ssize_t nread = 0;
+  ResponseStatus status = STATUS_OK;
   bool success = false;
   int fd = -1;
 
   if (rd->type == REQUEST_UNKNOWN) {
-    send_error_response(STATUS_NOT_IMPLEMENTED, sockfd);
+    status = STATUS_NOT_IMPLEMENTED;
+    send_error_response(status, sockfd);
     goto cleanup;
   }
 
@@ -261,10 +263,12 @@ void construct_response(RequestDetails *rd, int sockfd) {
   resourcePath = construct_canonical_resource_path(rd->relPath);
   if (resourcePath == NULL) {
     if (errno == EACCES) {
-      send_error_response(STATUS_FORBIDDEN, sockfd);
+      status = STATUS_FORBIDDEN;
+      send_error_response(status, sockfd);
       goto cleanup;
     } else if (errno == ENOENT || errno == ENOTDIR || errno == EINVAL) {
-      send_error_response(STATUS_NOT_FOUND, sockfd);
+      status = STATUS_NOT_FOUND;
+      send_error_response(status, sockfd);
       goto cleanup;
     } else {
       goto fail;
@@ -274,11 +278,13 @@ void construct_response(RequestDetails *rd, int sockfd) {
   /* confirm requested content is an extant file we have access to */
   if (stat(resourcePath, &resourceStat) == -1) {
     if (errno == EACCES) {
-      send_error_response(STATUS_FORBIDDEN, sockfd);
+      status = STATUS_FORBIDDEN;
+      send_error_response(status, sockfd);
       goto cleanup;
     } else if (errno == EBADF || errno == EFAULT || errno == ENOENT ||
                errno == ENOTDIR) {
-      send_error_response(STATUS_NOT_FOUND, sockfd);
+      status = STATUS_NOT_FOUND;
+      send_error_response(status, sockfd);
       goto cleanup;
     } else {
       goto fail;
@@ -287,12 +293,14 @@ void construct_response(RequestDetails *rd, int sockfd) {
 
   /* TEMPORARY: until we add directory support, dir-only content is an error */
   if (!S_ISREG(resourceStat.st_mode)) {
-    send_error_response(STATUS_FORBIDDEN, sockfd);
+    status = STATUS_FORBIDDEN;
+    send_error_response(status, sockfd);
     goto cleanup;
   }
 
   if (access(resourcePath, R_OK) == -1) {
-    send_error_response(STATUS_FORBIDDEN, sockfd);
+    status = STATUS_FORBIDDEN;
+    send_error_response(status, sockfd);
     goto cleanup;
   }
 
@@ -304,7 +312,8 @@ void construct_response(RequestDetails *rd, int sockfd) {
     }
 
     if (difftime(resourceStat.st_mtim.tv_sec, imsTime) < 0.0) {
-      send_error_response(STATUS_NOT_MODIFIED, sockfd);
+      status = STATUS_NOT_MODIFIED;
+      send_error_response(status, sockfd);
       goto cleanup;
     }
   }
@@ -378,6 +387,8 @@ void construct_response(RequestDetails *rd, int sockfd) {
     goto fail;
   }
 
+  rd->contentLen = resourceStat.st_size;
+
   /* add empty line as separator/terminator */
   success = safe_append(response, "\r\n", &responseSize);
   if (!success) {
@@ -392,6 +403,7 @@ void construct_response(RequestDetails *rd, int sockfd) {
     (void)free(response);
     (void)free(resourcePath);
     (void)free(contentType);
+    rd->status = responses[STATUS_SERVER_ERROR].statusCode;
     return;
   }
 
@@ -414,12 +426,14 @@ void construct_response(RequestDetails *rd, int sockfd) {
     }
   }
 
+  rd->status = responses[status].statusCode;
   (void)free(response);
   (void)free(resourcePath);
   (void)free(contentType);
   return;
 
 cleanup:
+  rd->status = responses[status].statusCode;
   (void)free(response);
   (void)free(resourcePath);
   (void)free(contentType);
@@ -427,6 +441,7 @@ cleanup:
 
 fail:
   send_fallback_error_response(sockfd);
+  rd->status = responses[STATUS_SERVER_ERROR].statusCode;
 
   (void)free(response);
   (void)free(resourcePath);
