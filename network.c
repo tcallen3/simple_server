@@ -266,6 +266,7 @@ void process_request(int sockfd, struct sockaddr *client_addr) {
   const char lineSep[] = "\r\n";
   char *currLine = NULL;
   char *request = NULL;
+  char *saveptr = NULL;
   char buf[BUFSIZ];
   size_t reqSize = BUFSIZ;
   ssize_t bytes;
@@ -301,11 +302,12 @@ void process_request(int sockfd, struct sockaddr *client_addr) {
    * on itself during nested parsing */
 
   /* parse request into RequestDetails structure */
-  currLine = strtok(request, lineSep);
+  currLine = strtok_r(request, lineSep, &saveptr);
   if (currLine == NULL) {
     send_error_response(STATUS_BAD_REQUEST, sockfd);
     goto cleanup;
   }
+
   if (!parse_http_request(currLine, &rd)) {
     if (errno == ENOBUFS) {
       /* our fault */
@@ -316,8 +318,14 @@ void process_request(int sockfd, struct sockaddr *client_addr) {
     goto cleanup;
   }
 
+  /* shortcut POST requests with potentially large bodies */
+  if (rd.type == REQUEST_UNKNOWN) {
+    send_error_response(STATUS_NOT_IMPLEMENTED, sockfd);
+    goto cleanup;
+  }
+
   /* check for If-Modified-Since header */
-  while ((currLine = strtok(NULL, lineSep)) != NULL) {
+  while ((currLine = strtok_r(NULL, lineSep, &saveptr)) != NULL) {
     (void)parse_http_cache_header(currLine, &rd);
   }
 
